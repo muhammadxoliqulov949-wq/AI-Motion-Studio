@@ -114,3 +114,55 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* ---------- AI Motion Studio editor ---------- */
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+}
+
+.panel-scroll,
+.timeline-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.shimmer-text {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.35) 0%, #fff 50%, rgba(255, 255, 255, 0.35) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.ai-scan::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 30%;
+  background: linear-gradient(180deg, transparent, rgba(168, 85, 247, 0.35), transparent);
+  animation: scan 1.4s ease-in-out infinite;
+}
+
+@keyframes scan {
+  from {
+    top: -30%;
+  }
+  to {
+    top: 100%;
+  }
+}

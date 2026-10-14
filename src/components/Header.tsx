@@ -16,7 +16,7 @@ export function Header({ asLink = false }: HeaderProps) {
         }}
       />
       <span className="text-xl font-bold text-white font-sans">
-        Remotion - Prompt to Motion Graphics
+        AI Motion Studio · Generatsiya
       </span>
     </div>
   );
