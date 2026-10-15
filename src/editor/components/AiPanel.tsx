@@ -39,7 +39,7 @@ const STARTERS = [
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => void }) {
-  const { project, assets, selectedId, commit } = useEditor();
+  const { project, assets, selectedId, commit, addAssets } = useEditor();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -143,6 +143,7 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
       patch(aiId, { revealed: i });
     }
     const changed = result.project !== before;
+    if (result.newAssets.length) addAssets(result.newAssets);
     if (changed) commit(result.project);
     const reply = plan.reply ?? summarize(result.steps.filter((s) => !s.warning).length, before, result.project);
     historyRef.current = [
@@ -162,7 +163,15 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
 
   const selected = project.clips.find((c) => c.id === selectedId);
   const selectedLabel =
-    selected?.type === "text" ? selected.text : selected ? assets.find((a) => a.id === selected.assetId)?.name : null;
+    selected?.type === "text"
+      ? selected.text
+      : selected?.type === "media"
+        ? assets.find((a) => a.id === selected.assetId)?.name
+        : selected?.type === "sticker"
+          ? selected.sticker
+          : selected?.type === "effect"
+            ? selected.effect
+            : null;
 
   return (
     <div className="flex flex-col h-full min-h-0">

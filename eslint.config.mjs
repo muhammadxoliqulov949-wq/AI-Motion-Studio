@@ -35,6 +35,13 @@ export default [
       },
     },
   },
+  // Node build scripts (catalog / sound generators)
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: { process: "readonly", console: "readonly", URL: "readonly", Buffer: "readonly", fetch: "readonly" },
+    },
+  },
   // Next.js recommended rules applied to app code
   {
     files: ["**/*.{js,jsx,ts,tsx}"],

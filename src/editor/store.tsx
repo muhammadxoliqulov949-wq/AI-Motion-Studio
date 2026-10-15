@@ -10,7 +10,7 @@ import React, {
   useRef,
   useSyncExternalStore,
 } from "react";
-import type { MediaAsset, Project } from "./types";
+import type { Clip, MediaAsset, Project } from "./types";
 
 interface State {
   past: Project[];
@@ -26,7 +26,8 @@ type Action =
   | { type: "undo" }
   | { type: "redo" }
   | { type: "select"; id: string | null }
-  | { type: "add-assets"; assets: MediaAsset[] };
+  | { type: "add-assets"; assets: MediaAsset[] }
+  | { type: "update-asset"; id: string; patch: Partial<MediaAsset> };
 
 const HISTORY_LIMIT = 100;
 
@@ -71,6 +72,8 @@ const reducer = (state: State, action: Action): State => {
         ...state,
         assets: [...state.assets, ...action.assets.filter((a) => !state.assets.some((b) => b.id === a.id))],
       };
+    case "update-asset":
+      return { ...state, assets: state.assets.map((a) => (a.id === action.id ? { ...a, ...action.patch } : a)) };
   }
 };
 
@@ -120,6 +123,9 @@ interface EditorContextValue {
   redo: () => void;
   select: (id: string | null) => void;
   addAssets: (assets: MediaAsset[]) => void;
+  updateAsset: (id: string, patch: Partial<MediaAsset>) => void;
+  /** Clip copied with Ctrl+C. */
+  clipboard: React.MutableRefObject<Clip | null>;
   playerRef: React.RefObject<PlayerRef | null>;
   playhead: Playhead;
   seek: (seconds: number) => void;
@@ -145,6 +151,7 @@ export function EditorProvider({
     selectedId: null,
   });
   const playerRef = useRef<PlayerRef | null>(null);
+  const clipboard = useRef<Clip | null>(null);
   const playhead = useMemo(createPlayhead, []);
   const fps = state.present.fps;
 
@@ -172,6 +179,8 @@ export function EditorProvider({
       redo: () => dispatch({ type: "redo" }),
       select: (id) => dispatch({ type: "select", id }),
       addAssets: (assets) => dispatch({ type: "add-assets", assets }),
+      updateAsset: (id, patch) => dispatch({ type: "update-asset", id, patch }),
+      clipboard,
       playerRef,
       playhead,
       seek,

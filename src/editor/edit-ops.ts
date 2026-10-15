@@ -4,19 +4,39 @@
  * runs them against the timeline using the same helpers as the manual UI.
  */
 import { z } from "zod";
-import { clipsOnTrack, closeGaps, makeMediaClip, makeTextClip, splitClip } from "./ops";
-import { FILTERS } from "./presets";
-import type { Clip, MediaAsset, MediaClip, Project, TextClip } from "./types";
+import { CLIP_ANIMATIONS, TEXT_ANIMATIONS } from "./catalog/animations";
+import { MUSIC, musicToAsset, pickMusic, pickSfx, sfxToAsset } from "./catalog/audio-library";
+import { EFFECT_IDS, EFFECTS } from "./catalog/effects";
+import { FILTERS, FILTER_PRESETS } from "./catalog/filters";
+import { FONTS } from "./catalog/fonts";
+import { EMOJI_STICKERS, SHAPE_STICKERS } from "./catalog/stickers";
+import { TEXT_TEMPLATES } from "./catalog/text-templates";
+import { TRANSITION_IDS } from "./catalog/transitions";
+import { setKeyframe } from "./keyframes";
+import { clipsOnTrack, closeGaps, insertClip, makeEffectClip, makeMediaClip, makeStickerClip, makeTextClip, migrateProject, splitClip, templatePatch } from "./ops";
+import type { Clip, Easing, KeyframeProp, MediaAsset, MediaClip, Project, TextClip } from "./types";
 import { clamp, clipEnd, projectDuration, round, uid } from "./utils";
 
 // ---------- Schema ----------
 
-const ASPECT = z.enum(["16:9", "9:16", "1:1"]);
-const FILTER = z.enum(["none", "cinematic", "teal-orange", "vintage", "mono", "vivid", "cool", "warm", "fade"]);
-const TRANSITION = z.enum(["none", "fade", "slide", "zoom", "blur", "wipe"]);
+const ids = (list: string[]) => list as [string, ...string[]];
+const ASPECT = z.enum(["16:9", "9:16", "1:1", "4:5", "4:3", "21:9"]);
+const FILTER = z.enum(ids(Object.keys(FILTER_PRESETS)));
+const TRANSITION = z.enum(ids(TRANSITION_IDS));
 const MOTION = z.enum(["none", "ken-burns", "punch-in", "shake", "drift"]);
-const TEXT_STYLE = z.enum(["title", "caption", "lower-third", "pop", "typewriter", "neon"]);
+const TEXT_STYLE = z.enum(ids(Object.keys(TEXT_TEMPLATES)));
 const POSITION = z.enum(["top", "center", "bottom"]);
+const CLIP_ANIM_IN = z.enum(ids(Object.keys(CLIP_ANIMATIONS).filter((k) => k.startsWith("in:"))));
+const CLIP_ANIM_OUT = z.enum(ids(Object.keys(CLIP_ANIMATIONS).filter((k) => k.startsWith("out:"))));
+const CLIP_ANIM_COMBO = z.enum(ids(Object.keys(CLIP_ANIMATIONS).filter((k) => k.startsWith("combo:"))));
+const TEXT_ANIM_IN = z.enum(ids(Object.keys(TEXT_ANIMATIONS).filter((k) => TEXT_ANIMATIONS[k].kind === "in")));
+const TEXT_ANIM_OUT = z.enum(ids(Object.keys(TEXT_ANIMATIONS).filter((k) => TEXT_ANIMATIONS[k].kind === "out")));
+const TEXT_ANIM_LOOP = z.enum(ids(Object.keys(TEXT_ANIMATIONS).filter((k) => TEXT_ANIMATIONS[k].kind === "loop")));
+const EFFECT = z.enum(ids(EFFECT_IDS));
+const SPEED_CURVE = z.enum(["none", "montage", "hero", "bullet", "jump-cut", "flash-in", "flash-out"]);
+const FONT_CATEGORY = z.enum(["sans", "display", "serif", "handwriting", "mono"]);
+const KF_PROP = z.enum(["x", "y", "scale", "rotation", "opacity", "volume"]);
+const EASING = z.enum(["linear", "ease", "ease-in", "ease-out", "hold", "bounce"]);
 
 // Every field is required (nullable instead of optional) and the union is a plain z.union
 // (anyOf, not oneOf) so OpenAI strict structured outputs accept the schema.
@@ -77,6 +97,19 @@ export const EditOpSchema = z.union([
     textStyle: TEXT_STYLE.nullable(),
     position: POSITION.nullable(),
     color: z.string().nullable(),
+    speedCurve: SPEED_CURVE.nullable(),
+    reverse: z.boolean().nullable(),
+    fadeIn: z.number().nullable().describe("Audio fade-in seconds"),
+    fadeOut: z.number().nullable().describe("Audio fade-out seconds"),
+    fit: z.enum(["cover", "contain", "fill"]).nullable(),
+    brightness: z.number().nullable().describe("-1..1"),
+    contrast: z.number().nullable().describe("-1..1"),
+    saturation: z.number().nullable().describe("-1..1"),
+    temperature: z.number().nullable().describe("-1 cool .. 1 warm"),
+    filterIntensity: z.number().nullable().describe("0..1"),
+    x: z.number().nullable().describe("Horizontal offset in % of the frame, -100..100"),
+    y: z.number().nullable().describe("Vertical offset in % of the frame, -100..100"),
+    rotation: z.number().nullable().describe("Degrees"),
   }),
   z.object({ op: z.literal("split_clip"), clipId: z.string(), at: z.number().describe("Timeline time in seconds") }),
   z.object({ op: z.literal("delete_clip"), clipId: z.string(), ripple: z.boolean() }),
@@ -97,6 +130,71 @@ export const EditOpSchema = z.union([
   }),
   z.object({ op: z.literal("close_gaps"), trackId: z.string() }),
   z.object({ op: z.literal("rename_project"), name: z.string() }),
+  z.object({
+    op: z.literal("add_library_music"),
+    tags: z.array(z.string()).describe("Genre / mood words from the music library vocabulary, e.g. [\"electronic\",\"uplifting\"]"),
+    trackId: z.string().nullable().describe("Audio track, null = A1 (replaces existing music there)"),
+    volume: z.number().nullable().describe("0–1, default 0.6"),
+  }),
+  z.object({
+    op: z.literal("add_sfx"),
+    tags: z.array(z.string()).describe("Sound words, e.g. [\"whoosh\"], [\"pop\"], [\"applause\"], [\"impact\",\"cinematic\"]"),
+    at: z.array(z.number()).nullable().describe("Timeline times in seconds; null with atCuts=true puts one on every V1 cut"),
+    atCuts: z.boolean(),
+    volume: z.number().nullable(),
+  }),
+  z.object({
+    op: z.literal("add_sticker"),
+    sticker: z.string().describe("Animated emoji name (e.g. fire, red-heart, party-popper, thumbs-up, joy) or shape:<id> (arrow-right, subscribe, like, star, burst, speech, check, cross, location, bell, sparkle)"),
+    start: z.number(),
+    duration: z.number(),
+    x: z.number().nullable().describe("% offset from centre, -45..45"),
+    y: z.number().nullable(),
+    scale: z.number().nullable(),
+  }),
+  z.object({
+    op: z.literal("add_effect"),
+    effect: EFFECT,
+    start: z.number(),
+    duration: z.number(),
+    intensity: z.number().nullable().describe("0–1, default 0.7"),
+  }),
+  z.object({
+    op: z.literal("style_text"),
+    clipIds: z.array(z.string()).nullable().describe("Text clips to restyle; null = every text clip"),
+    template: TEXT_STYLE.nullable(),
+    font: z.string().nullable().describe("Exact Google font family from the font list"),
+    fontCategory: FONT_CATEGORY.nullable().describe("Used when font is null: picks a fitting font of this category"),
+    fontSize: z.number().nullable().describe("px at 1080p, 40–220"),
+    color: z.string().nullable(),
+    strokeColor: z.string().nullable(),
+    strokeWidth: z.number().nullable(),
+    bgColor: z.string().nullable(),
+    highlightColor: z.string().nullable(),
+    textIn: TEXT_ANIM_IN.nullable(),
+    textOut: TEXT_ANIM_OUT.nullable(),
+    textLoop: TEXT_ANIM_LOOP.nullable(),
+  }),
+  z.object({
+    op: z.literal("set_animation"),
+    clipIds: z.array(z.string()).nullable().describe("null = every V1 clip"),
+    animIn: CLIP_ANIM_IN.nullable(),
+    animOut: CLIP_ANIM_OUT.nullable(),
+    animCombo: CLIP_ANIM_COMBO.nullable(),
+    duration: z.number().nullable().describe("In/out animation length in seconds, default 0.5"),
+  }),
+  z.object({
+    op: z.literal("set_keyframes"),
+    clipId: z.string(),
+    prop: KF_PROP,
+    keyframes: z.array(z.object({ t: z.number().describe("Seconds from the clip start"), value: z.number(), easing: EASING })),
+  }),
+  z.object({
+    op: z.literal("set_background"),
+    type: z.enum(["color", "blur", "gradient"]),
+    color: z.string().nullable(),
+    blur: z.number().nullable(),
+  }),
 ]);
 
 export type EditOp = z.infer<typeof EditOpSchema>;
@@ -120,9 +218,31 @@ export interface AgentStep {
 interface Ctx {
   project: Project;
   assets: MediaAsset[];
+  /** Library assets (music / SFX) the ops pulled in; the caller adds them to the project. */
+  newAssets: MediaAsset[];
   steps: AgentStep[];
   code: string[];
 }
+
+const useAsset = (ctx: Ctx, asset: MediaAsset) => {
+  if (!ctx.assets.some((a) => a.id === asset.id)) {
+    ctx.assets = [...ctx.assets, asset];
+    ctx.newAssets.push(asset);
+  }
+  return asset;
+};
+
+const pickFont = (name: string | null, category: string | null) => {
+  if (name) {
+    const hit = FONTS.find((f) => f.family.toLowerCase() === name.toLowerCase());
+    if (hit) return hit.family;
+  }
+  if (category) {
+    const preferCyr = FONTS.filter((f) => f.category === category);
+    return (preferCyr.find((f) => f.cyrillic) ?? preferCyr[0])?.family ?? null;
+  }
+  return null;
+};
 
 const step = (ctx: Ctx, label: string, detail: string, ...code: string[]) => {
   ctx.steps.push({ label, detail });
@@ -133,7 +253,8 @@ const warn = (ctx: Ctx, detail: string) => ctx.steps.push({ label: "O'tkazib yub
 
 const mainClips = (p: Project) => clipsOnTrack(p, "V1").filter((c): c is MediaClip => c.type === "media");
 
-const assetName = (ctx: Ctx, clip: MediaClip) => ctx.assets.find((a) => a.id === clip.assetId)?.name ?? clip.assetId;
+const assetName = (ctx: Ctx, clip: Clip) =>
+  clip.type === "media" ? ctx.assets.find((a) => a.id === clip.assetId)?.name ?? clip.assetId : clip.type === "text" ? clip.text : clip.type === "sticker" ? clip.sticker : clip.effect;
 
 const findClip = (ctx: Ctx, id: string) => ctx.project.clips.find((c) => c.id === id);
 
@@ -161,6 +282,12 @@ const patchClip = (ctx: Ctx, id: string, patch: Partial<Clip>) => {
 
 /** Speech lives in the interview demo clip or in any real uploaded footage. */
 export const isSpeechAsset = (asset?: MediaAsset) => !!asset && (asset.id === "asset_portrait" || (!asset.scene && asset.kind === "video"));
+
+/** Vocabulary shared with the system prompt. */
+export const LIBRARY_SUMMARY = {
+  musicCount: MUSIC.length,
+  fonts: FONTS.length,
+};
 
 const speechClips = (ctx: Ctx) => mainClips(ctx.project).filter((c) => isSpeechAsset(ctx.assets.find((a) => a.id === c.assetId)));
 
@@ -318,6 +445,7 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
           makeTextClip(round(t, 3), {
             trackId: "T2",
             duration: round(Math.min(2.3, to - t), 3),
+            ...templatePatch("caption"),
             text: lines[line++],
             style: "caption",
             position: "bottom",
@@ -337,7 +465,7 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
     const s = Math.max(0, start);
     // A new text replaces whatever overlaps it on the same track.
     const kept = ctx.project.clips.filter((c) => !(c.trackId === trackId && c.start < s + duration && clipEnd(c) > s));
-    const clip = makeTextClip(round(s, 3), { trackId, text, style, duration: clamp(duration, 0.5, 60), position });
+    const clip = makeTextClip(round(s, 3), { ...templatePatch(style), trackId, text, style, duration: clamp(duration, 0.5, 60), position });
     ctx.project = { ...ctx.project, clips: [...kept, clip] };
     step(ctx, style === "title" || style === "pop" ? "Sarlavha" : "Matn qo'shildi", `"${text}" — ${style}, ${round(s, 1)}s dan`, `text.add(${JSON.stringify(text)}, { style: "${style}", at: ${round(s, 2)} })`);
   },
@@ -348,7 +476,7 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
     const total = projectDuration({ ...ctx.project, clips: ctx.project.clips.filter((c) => c.trackId !== "A1") });
     const clips: Clip[] = [];
     for (let t = 0; t < total - 0.1; t += music.duration) {
-      clips.push(makeMediaClip(music, "A1", round(t, 3), { duration: round(Math.min(music.duration, total - t), 3), volume: clamp(volume ?? 0.6, 0, 1.5) }));
+      clips.push(makeMediaClip(music, "A1", round(t, 3), { duration: round(Math.min(music.duration, total - t), 3), volume: clamp(volume ?? 0.6, 0, 1.5), fadeIn: 0.5, fadeOut: 1 }));
     }
     ctx.project = replaceTrack(ctx.project, "A1", clips);
     step(ctx, "Musiqa", `"${music.name}" ${round(total, 1)}s ga moslandi, fade-in/out`, `audio.add("${music.name}", { fit: "timeline", fade: 0.5 })`);
@@ -361,11 +489,18 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
     const { textStyle, ...rest } = fields;
     for (const [k, v] of Object.entries(rest)) if (v !== null && k !== "op") patch[k] = v;
     if (textStyle) patch.style = textStyle;
+    const adjust: Record<string, number> = {};
+    for (const k of ["brightness", "contrast", "saturation", "temperature"]) {
+      if (typeof patch[k] === "number") adjust[k] = clamp(patch[k] as number, -1, 1);
+      delete patch[k];
+    }
+    if (Object.keys(adjust).length && clip.type === "media") patch.adjust = { ...clip.adjust, ...adjust };
     if (clip.type === "media") ["text", "style", "position", "color"].forEach((k) => delete patch[k]);
-    else ["filter", "motion", "volume", "opacity", "scale"].forEach((k) => delete patch[k]);
+    else ["filter", "motion", "volume", "speedCurve", "reverse", "fadeIn", "fadeOut", "fit", "filterIntensity"].forEach((k) => delete patch[k]);
+    if (clip.type === "effect") ["opacity", "scale", "x", "y", "rotation"].forEach((k) => delete patch[k]);
     if (!Object.keys(patch).length) return;
     patchClip(ctx, clip.id, patch as Partial<Clip>);
-    const label = clip.type === "text" ? `"${(clip as TextClip).text}"` : `"${assetName(ctx, clip)}"`;
+    const label = `"${assetName(ctx, clip)}"`;
     step(ctx, "Klip yangilandi", `${label}: ${Object.keys(patch).join(", ")}`, `clip("${clip.id}").set(${JSON.stringify(patch)})`);
   },
 
@@ -386,7 +521,7 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
       );
     }
     ctx.project = { ...ctx.project, clips };
-    step(ctx, "O'chirildi", `${clip.type === "text" ? clip.text : assetName(ctx, clip)}${ripple ? " (ripple)" : ""}`, `clip("${clipId}").delete({ ripple: ${ripple} })`);
+    step(ctx, "O'chirildi", `${assetName(ctx, clip)}${ripple ? " (ripple)" : ""}`, `clip("${clipId}").delete({ ripple: ${ripple} })`);
   },
 
   move_clip: (ctx, { clipId, start }) => {
@@ -433,10 +568,108 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
     ctx.project = { ...ctx.project, name };
     step(ctx, "Loyiha nomi", name, `project.rename(${JSON.stringify(name)})`);
   },
+
+  add_library_music: (ctx, { tags, trackId, volume }) => {
+    const track = trackId ?? "A1";
+    const total = projectDuration({ ...ctx.project, clips: ctx.project.clips.filter((c) => c.trackId !== track) }) || 15;
+    const current = ctx.project.clips.filter((c) => c.trackId === track && c.type === "media").map((c) => (c as MediaClip).assetId.replace(/^lib_/, ""));
+    const t = pickMusic(tags, total, current);
+    if (!t) return warn(ctx, "Mos musiqa topilmadi");
+    const music = useAsset(ctx, musicToAsset(t));
+    const clips: Clip[] = [];
+    for (let s = 0; s < total - 0.1; s += music.duration) {
+      clips.push(makeMediaClip(music, track, round(s, 3), { duration: round(Math.min(music.duration, total - s), 3), volume: clamp(volume ?? 0.6, 0, 1.5), fadeIn: 0.5, fadeOut: 1.2 }));
+    }
+    ctx.project = migrateProject(replaceTrack(ctx.project, track, clips));
+    step(ctx, "Musiqa kutubxonadan", `"${t.title}" (Kevin MacLeod, CC BY 4.0) — ${tags.join(", ")}`, `audio.addFromLibrary(${JSON.stringify(tags)}) // ${t.id}`);
+  },
+
+  add_sfx: (ctx, { tags, at, atCuts, volume }) => {
+    const sfx = pickSfx(tags);
+    if (!sfx) return warn(ctx, `Tovush topilmadi: ${tags.join(", ")}`);
+    const asset = useAsset(ctx, sfxToAsset(sfx));
+    const times = at?.length ? at : atCuts ? mainClips(ctx.project).slice(1).map((c) => Math.max(0, c.start - Math.min(0.25, asset.duration / 2))) : [0];
+    let p = migrateProject(ctx.project);
+    for (const time of times.slice(0, 40)) {
+      const clip = makeMediaClip(asset, "A2", round(Math.max(0, time), 3), { volume: clamp(volume ?? 0.9, 0, 1.5), fadeIn: 0, fadeOut: 0 });
+      p = insertClip(p, clip, ["audio"], "A2");
+    }
+    ctx.project = p;
+    step(ctx, "Tovush effekti", `"${sfx.title}" × ${Math.min(40, times.length)}`, `sfx.add("${sfx.id}", ${JSON.stringify(times.map((x) => round(x, 2)))})`);
+  },
+
+  add_sticker: (ctx, { sticker, start, duration, x, y, scale }) => {
+    const id = sticker.startsWith("shape:")
+      ? SHAPE_STICKERS.some((s) => `shape:${s.id}` === sticker) ? sticker : null
+      : EMOJI_STICKERS.some((e) => e.name === sticker.replace(/^emoji:/, "")) ? `emoji:${sticker.replace(/^emoji:/, "")}` : null;
+    if (!id) return warn(ctx, `Stiker topilmadi: ${sticker}`);
+    const clip = makeStickerClip(round(Math.max(0, start), 3), id, { duration: clamp(duration, 0.3, 30), x: x ?? 0, y: y ?? 0, scale: scale ?? 1 });
+    ctx.project = insertClip(ctx.project, clip, ["sticker"], "S1");
+    step(ctx, "Stiker", `${id} — ${round(start, 1)}s`, `stickers.add("${id}", { at: ${round(start, 2)} })`);
+  },
+
+  add_effect: (ctx, { effect, start, duration, intensity }) => {
+    const clip = makeEffectClip(round(Math.max(0, start), 3), effect, { duration: clamp(duration, 0.2, 60), intensity: clamp(intensity ?? 0.7, 0, 1) });
+    ctx.project = insertClip(ctx.project, clip, ["effect"], "FX1");
+    step(ctx, "Video effekt", `${EFFECTS[effect]?.label ?? effect} — ${round(start, 1)}s, ${round(duration, 1)}s`, `effects.add("${effect}", { at: ${round(start, 2)}, duration: ${round(duration, 2)} })`);
+  },
+
+  style_text: (ctx, { clipIds, template, font, fontCategory, ...rest }) => {
+    const targets = ctx.project.clips.filter((c): c is TextClip => c.type === "text" && (!clipIds || clipIds.includes(c.id)));
+    if (!targets.length) return warn(ctx, "Matn klipi topilmadi");
+    const family = pickFont(font, fontCategory);
+    const extra = Object.fromEntries(Object.entries(rest).filter(([k, v]) => v !== null && k !== "op")) as Partial<TextClip>;
+    const ids = new Set(targets.map((c) => c.id));
+    ctx.project = {
+      ...ctx.project,
+      clips: ctx.project.clips.map((c) =>
+        ids.has(c.id) && c.type === "text"
+          ? ({ ...c, ...(template ? templatePatch(template) : {}), position: c.position, ...(family ? { font: family } : {}), ...extra } as TextClip)
+          : c,
+      ),
+    };
+    step(ctx, "Matn uslubi", `${targets.length} ta matn${family ? ` · ${family}` : ""}${template ? ` · ${TEXT_TEMPLATES[template]?.label}` : ""}`, `text.style(${JSON.stringify({ template, font: family, ...extra })})`);
+  },
+
+  set_animation: (ctx, { clipIds, animIn, animOut, animCombo, duration }) => {
+    const ids = new Set(clipIds ?? mainClips(ctx.project).map((c) => c.id));
+    const d = clamp(duration ?? 0.5, 0.1, 3);
+    let count = 0;
+    ctx.project = {
+      ...ctx.project,
+      clips: ctx.project.clips.map((c) => {
+        if (!ids.has(c.id) || c.type === "effect") return c;
+        count++;
+        const dd = Math.min(d, c.duration / 2);
+        return {
+          ...c,
+          ...(animIn ? { animIn: { id: animIn, duration: dd } } : {}),
+          ...(animOut ? { animOut: { id: animOut, duration: dd } } : {}),
+          ...(animCombo ? { animCombo: { id: animCombo, duration: 0 } } : {}),
+        } as Clip;
+      }),
+    };
+    step(ctx, "Animatsiya", `${count} ta klip: ${[animIn, animOut, animCombo].filter(Boolean).map((a) => CLIP_ANIMATIONS[a!]?.label).join(", ")}`, `clips.animate(${JSON.stringify({ animIn, animOut, animCombo, duration: d })})`);
+  },
+
+  set_keyframes: (ctx, { clipId, prop, keyframes }) => {
+    const clip = findClip(ctx, clipId);
+    if (!clip || clip.type === "effect") return warn(ctx, `Klip topilmadi: ${clipId}`);
+    let next: Clip = { ...clip, keyframes: { ...clip.keyframes, [prop]: [] } } as Clip;
+    for (const k of keyframes) next = setKeyframe(next, prop as KeyframeProp, k.t, k.value, k.easing as Easing);
+    ctx.project = { ...ctx.project, clips: ctx.project.clips.map((c) => (c.id === clipId ? next : c)) };
+    step(ctx, "Keyframe", `${assetName(ctx, clip)}: ${prop} × ${keyframes.length}`, `clip("${clipId}").keyframes("${prop}", ${JSON.stringify(keyframes)})`);
+  },
+
+  set_background: (ctx, { type, color, blur }) => {
+    const bg = ctx.project.background ?? { type: "color" as const, color: "#000000", blur: 40 };
+    ctx.project = { ...ctx.project, background: { ...bg, type, color: color ?? bg.color, blur: blur ?? bg.blur } };
+    step(ctx, "Kanvas foni", type === "blur" ? "Blur fon" : type === "color" ? `Rang ${color ?? bg.color}` : "Gradient", `canvas.background("${type}")`);
+  },
 };
 
 export const applyOps = (project: Project, assets: MediaAsset[], ops: EditOp[]) => {
-  const ctx: Ctx = { project, assets, steps: [], code: [] };
+  const ctx: Ctx = { project: migrateProject(project), assets, newAssets: [], steps: [], code: [] };
   for (const op of ops) {
     try {
       (OPS[op.op] as (ctx: Ctx, op: EditOp) => void)(ctx, op);
@@ -444,7 +677,7 @@ export const applyOps = (project: Project, assets: MediaAsset[], ops: EditOp[]) 
       warn(ctx, `${op.op}: ${(err as Error).message}`);
     }
   }
-  return { project: ctx.project, steps: ctx.steps, code: ctx.code.join("\n") };
+  return { project: ctx.project, steps: ctx.steps, code: ctx.code.join("\n"), newAssets: ctx.newAssets };
 };
 
 // ---------- Context for the model ----------
@@ -483,23 +716,35 @@ export const describeProject = (project: Project, assets: MediaAsset[], selected
             motion: c.motion,
             transitionIn: c.transitionIn,
             volume: c.volume,
+            ...(c.animIn || c.animOut ? { anim: [c.animIn?.id, c.animOut?.id].filter(Boolean) } : {}),
+            ...(c.speedCurve && c.speedCurve !== "none" ? { speedCurve: c.speedCurve } : {}),
+            ...(c.reverse ? { reverse: true } : {}),
           }
-        : {
-            id: c.id,
-            track: c.trackId,
-            text: c.text,
-            style: c.style,
-            start: round(c.start, 2),
-            end: round(clipEnd(c), 2),
-            position: c.position,
-          },
+        : c.type === "text"
+          ? {
+              id: c.id,
+              track: c.trackId,
+              text: c.text,
+              style: c.style,
+              start: round(c.start, 2),
+              end: round(clipEnd(c), 2),
+              position: c.position,
+              ...(c.font ? { font: c.font } : {}),
+              ...(c.textIn || c.textLoop ? { textAnim: [c.textIn, c.textLoop].filter(Boolean) } : {}),
+            }
+          : c.type === "sticker"
+            ? { id: c.id, track: c.trackId, sticker: c.sticker, start: round(c.start, 2), end: round(clipEnd(c), 2) }
+            : { id: c.id, track: c.trackId, effect: c.effect, start: round(c.start, 2), end: round(clipEnd(c), 2) },
     ),
-  assets: assets.map((a) => ({
+  background: project.background?.type ?? "color",
+  assets: assets.filter((a) => a.origin !== "sfx").map((a) => ({
     id: a.id,
     name: a.name,
     kind: a.kind,
     duration: round(a.duration, 2),
-    note: SCENE_NOTES[a.id] ?? (isSpeechAsset(a) ? "user-uploaded footage, may contain speech" : `user-uploaded ${a.kind}`),
+    note:
+      SCENE_NOTES[a.id] ??
+      (a.origin === "music" ? "library music track" : a.id === "asset_music" ? "demo lo-fi beat" : isSpeechAsset(a) ? "user-uploaded footage, may contain speech" : `user-uploaded ${a.kind}`),
   })),
 });
 
