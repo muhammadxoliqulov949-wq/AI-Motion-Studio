@@ -35,45 +35,61 @@ if (
   process.exit(0);
 }
 
-process.stdout.write("Deploying Lambda function... ");
+const deploy = async () => {
+  process.stdout.write("Deploying Lambda function... ");
 
-const { functionName, alreadyExisted: functionAlreadyExisted } =
-  await deployFunction({
-    createCloudWatchLogGroup: true,
-    memorySizeInMb: RAM,
+  const { functionName, alreadyExisted: functionAlreadyExisted } =
+    await deployFunction({
+      createCloudWatchLogGroup: true,
+      memorySizeInMb: RAM,
+      region: REGION,
+      timeoutInSeconds: TIMEOUT,
+      diskSizeInMb: DISK,
+    });
+  console.log(
+    functionName,
+    functionAlreadyExisted ? "(already existed)" : "(created)",
+  );
+
+  process.stdout.write("Ensuring bucket... ");
+  const { bucketName, alreadyExisted: bucketAlreadyExisted } =
+    await getOrCreateBucket({
+      region: REGION,
+    });
+  console.log(
+    bucketName,
+    bucketAlreadyExisted ? "(already existed)" : "(created)",
+  );
+
+  process.stdout.write("Deploying site... ");
+  const { siteName } = await deploySite({
+    bucketName,
+    entryPoint: path.join(process.cwd(), "src", "remotion", "index.ts"),
+    siteName: SITE_NAME,
     region: REGION,
-    timeoutInSeconds: TIMEOUT,
-    diskSizeInMb: DISK,
+    options: { webpackOverride },
   });
-console.log(
-  functionName,
-  functionAlreadyExisted ? "(already existed)" : "(created)",
-);
 
-process.stdout.write("Ensuring bucket... ");
-const { bucketName, alreadyExisted: bucketAlreadyExisted } =
-  await getOrCreateBucket({
-    region: REGION,
-  });
-console.log(
-  bucketName,
-  bucketAlreadyExisted ? "(already existed)" : "(created)",
-);
+  console.log(siteName);
 
-process.stdout.write("Deploying site... ");
-const { siteName } = await deploySite({
-  bucketName,
-  entryPoint: path.join(process.cwd(), "src", "remotion", "index.ts"),
-  siteName: SITE_NAME,
-  region: REGION,
-  options: { webpackOverride },
-});
+  console.log();
+  console.log("You now have everything you need to render videos!");
+  console.log("Re-run this command when:");
+  console.log("  1) you changed the video template");
+  console.log("  2) you changed config.mjs");
+  console.log("  3) you upgraded Remotion to a newer version");
+};
 
-console.log(siteName);
-
-console.log();
-console.log("You now have everything you need to render videos!");
-console.log("Re-run this command when:");
-console.log("  1) you changed the video template");
-console.log("  2) you changed config.mjs");
-console.log("  3) you upgraded Remotion to a newer version");
+try {
+  await deploy();
+} catch (err) {
+  // On Vercel this runs before `next build`. A Lambda problem (e.g. missing AWS
+  // permissions) must not take the whole site down — only server-side rendering
+  // is affected. Run `npm run deploy` locally to see the failure as an error.
+  if (!process.env.VERCEL) throw err;
+  console.log();
+  console.warn("⚠ Remotion Lambda deploy failed — continuing the site build without it.");
+  console.warn(`  ${err?.name ?? "Error"}: ${err?.message ?? err}`);
+  console.warn("  Video rendering via Lambda will not work until this is fixed.");
+  console.warn("  See https://www.remotion.dev/docs/lambda/permissions");
+}
