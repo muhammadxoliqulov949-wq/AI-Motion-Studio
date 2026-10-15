@@ -1,5 +1,12 @@
 import React from "react";
 import { Composition } from "remotion";
+import {
+  calculateMontageMetadata,
+  MONTAGE_SIZES,
+  MontageComposition,
+  totalFrames,
+} from "../montage/composition/MontageComposition";
+import { SAMPLE_MONTAGE } from "../montage/sample";
 import { DynamicComp } from "./DynamicComp";
 
 const defaultCode = `import { AbsoluteFill } from "remotion";
@@ -20,6 +27,15 @@ export const RemotionRoot: React.FC = () => {
           durationInFrames: props.durationInFrames as number,
           fps: props.fps as number,
         })}
+      />
+      <Composition
+        id="AiMontage"
+        component={MontageComposition}
+        durationInFrames={totalFrames(SAMPLE_MONTAGE)}
+        fps={SAMPLE_MONTAGE.fps}
+        {...MONTAGE_SIZES[SAMPLE_MONTAGE.aspect]}
+        defaultProps={{ montage: SAMPLE_MONTAGE }}
+        calculateMetadata={calculateMontageMetadata}
       />
     </>
   );
