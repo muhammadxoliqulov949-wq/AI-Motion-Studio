@@ -1,4 +1,5 @@
 import { AgentResponseSchema, type ProjectDescription } from "@/editor/edit-ops";
+import { rateLimit, rateLimitedResponse } from "@/lib/rate-limit";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 
@@ -42,8 +43,19 @@ interface EditRequest {
 }
 
 const MAX_BODY = 300_000;
+const MAX_PROMPT = 2_000;
+const MAX_HISTORY = 8;
+const MAX_HISTORY_MESSAGE = 4_000;
+const ALLOWED_MODELS = new Set(["gpt-5.2:none", "gpt-5.2:low", "gpt-5.2:medium"]);
+
+/** ~20 AI edits per 10 minutes per IP. */
+const RATE_LIMIT = { name: "edit", limit: 20, windowMs: 10 * 60 * 1000 };
 
 export async function POST(req: Request) {
+  // Runs before the API key check so it also guards (and is testable on) key-less deploys.
+  const limited = await rateLimit(req, RATE_LIMIT);
+  if (!limited.ok) return rateLimitedResponse(limited);
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return Response.json(
@@ -64,9 +76,22 @@ export async function POST(req: Request) {
     return Response.json({ error: "Noto'g'ri JSON", code: "bad_request" }, { status: 400 });
   }
   const { prompt, project, history = [], model = "gpt-5.2:low" } = body;
-  if (!prompt?.trim() || !project) {
+  if (typeof prompt !== "string" || !prompt.trim() || !project) {
     return Response.json({ error: "prompt va project kerak", code: "bad_request" }, { status: 400 });
   }
+  if (prompt.length > MAX_PROMPT) {
+    return Response.json(
+      { error: `So'rov juda uzun (ko'pi bilan ${MAX_PROMPT} belgi)`, code: "too_large" },
+      { status: 413 },
+    );
+  }
+  if (!ALLOWED_MODELS.has(model)) {
+    return Response.json({ error: "Bu model qo'llab-quvvatlanmaydi", code: "bad_request" }, { status: 400 });
+  }
+  const safeHistory = (Array.isArray(history) ? history : [])
+    .slice(-MAX_HISTORY)
+    .filter((m) => (m?.role === "user" || m?.role === "assistant") && typeof m.content === "string")
+    .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_MESSAGE) }));
 
   const [modelName, reasoningEffort] = model.split(":");
   const openai = createOpenAI({ apiKey });
@@ -77,7 +102,7 @@ export async function POST(req: Request) {
       system: SYSTEM_PROMPT,
       schema: AgentResponseSchema,
       messages: [
-        ...history.slice(-8).map((m) => ({ role: m.role, content: m.content })),
+        ...safeHistory,
         {
           role: "user" as const,
           content: `Current timeline:\n\`\`\`json\n${JSON.stringify(project)}\n\`\`\`\n\nRequest: ${prompt}`,

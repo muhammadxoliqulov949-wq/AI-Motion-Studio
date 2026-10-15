@@ -118,6 +118,15 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
           mode: "local",
           notice: "OPENAI_API_KEY topilmadi — lokal (kalit so'zli) rejimda ishladim.",
         };
+      } else if (data.code === "rate_limited") {
+        const minutes = Math.max(1, Math.ceil((Number(data.retryAfter) || 60) / 60));
+        patch(aiId, {
+          status: "done",
+          error: true,
+          text: `Siz qisqa vaqt ichida juda ko'p so'rov yubordingiz. Iltimos, taxminan ${minutes} daqiqa kutib, qayta urinib ko'ring.`,
+        });
+        finish();
+        return;
       } else {
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
