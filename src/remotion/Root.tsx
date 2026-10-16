@@ -3,6 +3,13 @@ import { Composition } from "remotion";
 import { TimelineComposition, type TimelineCompositionProps } from "../editor/composition/TimelineComposition";
 import { ASPECTS } from "../editor/presets";
 import { projectDuration } from "../editor/utils";
+import {
+  calculateMontageMetadata,
+  MONTAGE_SIZES,
+  MontageComposition,
+  totalFrames,
+} from "../montage/composition/MontageComposition";
+import { SAMPLE_MONTAGE } from "../montage/sample";
 import { DynamicComp } from "./DynamicComp";
 
 const defaultCode = `import { AbsoluteFill } from "remotion";
@@ -59,6 +66,15 @@ export const RemotionRoot: React.FC = () => {
             height: even(height),
           };
         }}
+      />
+      <Composition
+        id="AiMontage"
+        component={MontageComposition}
+        durationInFrames={totalFrames(SAMPLE_MONTAGE)}
+        fps={SAMPLE_MONTAGE.fps}
+        {...MONTAGE_SIZES[SAMPLE_MONTAGE.aspect]}
+        defaultProps={{ montage: SAMPLE_MONTAGE }}
+        calculateMetadata={calculateMontageMetadata}
       />
     </>
   );

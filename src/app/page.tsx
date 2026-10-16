@@ -36,6 +36,14 @@ const MODULES = [
     accent: "from-violet-500 to-fuchsia-500",
   },
   {
+    title: "AI Montaj",
+    status: "Yangi",
+    href: "/montage",
+    icon: Wand2,
+    desc: "Bitta mavzu yozing — AI ssenariy, fon videolar, ovoz, subtitr, shrift va tovush effektlari bilan tayyor video yig'adi.",
+    accent: "from-yellow-400 to-orange-500",
+  },
+  {
     title: "Video generatsiya",
     status: "Beta",
     href: "/motion",
@@ -118,8 +126,8 @@ export default function Home() {
       </header>
 
       <section id="modullar" className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-16">
-        <SectionHead kicker="Bo'limlar" title="Bitta studiya — uchta yo'nalish" />
-        <div className="grid md:grid-cols-3 gap-4">
+        <SectionHead kicker="Bo'limlar" title="Bitta studiya — to'rtta yo'nalish" />
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {MODULES.map((m) => {
             const card = (
               <div className="group h-full rounded-2xl p-6 bg-white/[0.03] ring-1 ring-white/10 hover:ring-white/25 hover:bg-white/[0.05] transition">
@@ -129,7 +137,7 @@ export default function Home() {
                   </span>
                   <span
                     className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                      m.status === "Faol" ? "bg-emerald-500/15 text-emerald-300" : m.status === "Beta" ? "bg-sky-500/15 text-sky-300" : "bg-white/10 text-white/50"
+                      m.status === "Faol" ? "bg-emerald-500/15 text-emerald-300" : m.status === "Yangi" ? "bg-yellow-400/15 text-yellow-200" : m.status === "Beta" ? "bg-sky-500/15 text-sky-300" : "bg-white/10 text-white/50"
                     }`}
                   >
                     {m.status}
