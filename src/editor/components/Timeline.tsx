@@ -408,9 +408,9 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex overflow-x-hidden overflow-y-auto panel-scroll">
+      <div className="flex-1 min-h-0 flex items-start overflow-x-hidden overflow-y-auto panel-scroll">
         {/* Track headers */}
-        <div className="shrink-0 border-r border-white/[0.06] bg-[#0d0d10] sticky left-0 z-20" style={{ width: compact ? 92 : HEADER_W }}>
+        <div className="shrink-0 self-stretch min-h-max border-r border-white/[0.06] bg-[#0d0d10] sticky left-0 z-20" style={{ width: compact ? 92 : HEADER_W }}>
           <div style={{ height: RULER_H }} className="border-b border-white/[0.06]" />
           {visibleTracks.map((track) => (
             <TrackHeader
@@ -425,7 +425,7 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
         </div>
 
         {/* Lanes */}
-        <div ref={scrollRef} className="relative flex-1 overflow-x-auto overflow-y-hidden timeline-scroll">
+        <div ref={scrollRef} className="relative flex-1 min-w-0 overflow-x-auto overflow-y-hidden timeline-scroll">
           <div className="relative" style={{ width: contentW }}>
             <Ruler pps={pps} width={contentW} onPointerDown={startScrub} />
             {visibleTracks.map((track) => (
