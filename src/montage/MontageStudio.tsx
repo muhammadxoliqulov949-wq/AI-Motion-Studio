@@ -106,7 +106,7 @@ export default function MontageStudio() {
           <div>
             <h1 className="font-display text-3xl font-extrabold tracking-tight">Bitta mavzu — tayyor video.</h1>
             <p className="mt-2 text-sm text-white/55 leading-relaxed">
-              AI ssenariy yozadi, Pexels&apos;dan fon videolar topadi, ovoz beradi, subtitr, shrift va tovush effektlarini qo&apos;yadi.
+              AI ssenariy yozadi, stok kutubxonadan (Pixabay) fon videolar topadi, ovoz beradi, subtitr, shrift va tovush effektlarini qo&apos;yadi.
             </p>
           </div>
 
@@ -238,7 +238,7 @@ function Segmented({ value, options, onChange, suffix = "" }: { value: string; o
 
 const STEPS = [
   { key: "script", label: "Ssenariy va kadrlar", detail: "OpenAI", icon: PenLine },
-  { key: "footage", label: "Fon videolar", detail: "Pexels", icon: Film },
+  { key: "footage", label: "Fon videolar", detail: "Pixabay", icon: Film },
   { key: "voice", label: "Ovoz (TTS)", detail: "OpenAI", icon: AudioLines },
   { key: "mix", label: "Montaj va miks", detail: "Remotion", icon: Clapperboard },
 ] as const;
@@ -369,7 +369,7 @@ function Result({ montage, showJson, onToggleJson }: { montage: ResolvedMontage;
                     <>
                       {" · "}
                       <a href={s.footage.pexelsUrl} target="_blank" rel="noreferrer" className="underline hover:text-white/70">
-                        {s.footage.author} / Pexels
+                        {s.footage.author} / {s.footage.pexelsUrl.includes("pixabay") ? "Pixabay" : "Pexels"}
                       </a>
                     </>
                   ) : (
@@ -380,7 +380,7 @@ function Result({ montage, showJson, onToggleJson }: { montage: ResolvedMontage;
             ))}
           </ol>
         )}
-        {credits.length > 0 && <p className="text-[10px] text-white/30">Fon videolar: Pexels.com (bepul litsenziya).</p>}
+        {credits.length > 0 && <p className="text-[10px] text-white/30">Fon videolar: Pixabay / Pexels (bepul tijoriy litsenziya).</p>}
       </div>
     </div>
   );

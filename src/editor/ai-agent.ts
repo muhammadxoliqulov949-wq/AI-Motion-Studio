@@ -164,6 +164,18 @@ export const planLocally = (prompt: string, project: Project, selectedId: string
       textLoop: null,
     });
   }
+  // With music on the timeline, cut to its real beats instead of a fixed rhythm.
+  const cutIdx = ops.findIndex((o) => o.op === "beat_cut");
+  const hasMusic = ops.some((o) => o.op === "add_library_music" || o.op === "add_music") || project.clips.some((c) => c.trackId === "A1");
+  if (cutIdx >= 0 && (hasMusic || has(text, ["ritm", "beat", "bit"]))) {
+    const target = (ops[cutIdx] as Extract<EditOp, { op: "beat_cut" }>).targetSeconds;
+    const atCuts = ops.filter((o) => o.op === "add_sfx" && o.atCuts);
+    const rest = ops.filter((o, i) => i !== cutIdx && !atCuts.includes(o));
+    const musicIdx = rest.findIndex((o) => o.op === "add_library_music" || o.op === "add_music");
+    const sync: EditOp = { op: "beat_sync", every: has(text, ["sokin", "tinch", "calm"]) ? 4 : 2, maxSeconds: target };
+    rest.splice(musicIdx >= 0 ? musicIdx + 1 : rest.length, 0, sync, ...atCuts);
+    return rest;
+  }
   return ops;
 };
 

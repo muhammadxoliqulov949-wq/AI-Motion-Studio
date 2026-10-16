@@ -5,7 +5,7 @@ export type AssetKind = "video" | "audio" | "image";
 export type SceneId = "city" | "mountains" | "ocean" | "portrait" | "product" | "neon";
 
 /** Where an asset came from: user upload, built-in demo, or one of the libraries. */
-export type AssetOrigin = "upload" | "demo" | "music" | "sfx";
+export type AssetOrigin = "upload" | "demo" | "music" | "sfx" | "stock" | "voice";
 
 export interface MediaAsset {
   id: string;
@@ -31,6 +31,8 @@ export interface MediaAsset {
   /** Attribution line required by the license (e.g. CC BY). */
   credit?: string;
   license?: string;
+  /** Path in the Supabase "media" bucket once the file is uploaded to the cloud. */
+  storagePath?: string;
 }
 
 export type TrackKind = "video" | "overlay" | "text" | "sticker" | "effect" | "audio";
@@ -63,7 +65,7 @@ export interface Keyframe {
   easing: Easing;
 }
 
-export type KeyframeProp = "x" | "y" | "scale" | "rotation" | "opacity" | "volume";
+export type KeyframeProp = "x" | "y" | "scale" | "rotation" | "opacity" | "volume" | "focusX";
 
 export type Keyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
 

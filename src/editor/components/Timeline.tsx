@@ -73,6 +73,8 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
   const total = projectDuration(project);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pps, setPps] = useState(28);
+  const ppsRef = useRef(pps);
+  ppsRef.current = pps;
   const [snap, setSnap] = useState(true);
   const [menu, setMenu] = useState(false);
   /** Tracks the user added explicitly stay visible even while empty. */
@@ -215,7 +217,29 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
       setPps((p) => clamp(p * (e.deltaY < 0 ? 1.15 : 0.87), 4, 300));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    // Two-finger pinch zoom on touch screens.
+    let pinch: { dist: number; pps: number } | null = null;
+    const distance = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) pinch = { dist: distance(e.touches), pps: ppsRef.current };
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      setPps(clamp(pinch.pps * (distance(e.touches) / pinch.dist), 4, 300));
+    };
+    const onTouchEnd = () => {
+      pinch = null;
+    };
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
   }, []);
 
   // ----- drag & drop from library -----

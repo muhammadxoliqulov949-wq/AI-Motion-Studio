@@ -43,6 +43,7 @@ import type {
   VisualClip,
 } from "../types";
 import { clamp, formatTime, round } from "../utils";
+import { BeatTool, ReframeTool, ReplaceMedia, SilenceTool } from "./AudioTools";
 import { Chips, ColorRow, SearchBox, Section, Segmented, Slider, Switch } from "./ui";
 
 type SetFn = (patch: Partial<Clip>, live?: boolean) => void;
@@ -92,7 +93,7 @@ export function Inspector() {
           </IconBtn>
         </div>
       </div>
-      {clip.type === "media" && asset?.kind === "audio" && <AudioInspector clip={clip} set={set} checkpoint={checkpoint} credit={asset.credit} license={asset.license} />}
+      {clip.type === "media" && asset?.kind === "audio" && <AudioInspector clip={clip} set={set} checkpoint={checkpoint} credit={asset.credit} license={asset.license} origin={asset.origin} />}
       {clip.type === "media" && asset?.kind !== "audio" && <MediaInspector clip={clip} set={set} checkpoint={checkpoint} isImage={asset?.kind === "image"} />}
       {clip.type === "text" && <TextInspector clip={clip} set={set} checkpoint={checkpoint} />}
       {clip.type === "sticker" && <StickerInspector clip={clip} set={set} checkpoint={checkpoint} />}
@@ -306,6 +307,8 @@ function MediaInspector({ clip, set, checkpoint, isImage }: { clip: MediaClip; s
       <Body>
         {tab === "basic" && (
           <>
+            <ReplaceMedia clip={clip} />
+            <ReframeTool clip={clip} />
             <TransformSection clip={clip} checkpoint={checkpoint} props={["x", "y", "scale", "rotation", "opacity"]} />
             <Section title="Kadr">
               <div className="flex gap-1.5">
@@ -411,7 +414,12 @@ function MediaInspector({ clip, set, checkpoint, isImage }: { clip: MediaClip; s
         )}
         {tab === "adjust" && <AdjustPanel clip={clip} set={set} checkpoint={checkpoint} />}
         {tab === "mask" && <MaskPanel mask={clip.mask} onChange={(m, live) => set({ mask: m }, live)} checkpoint={checkpoint} />}
-        {tab === "audio" && <VolumeSection clip={clip} set={set} checkpoint={checkpoint} />}
+        {tab === "audio" && (
+          <>
+            <VolumeSection clip={clip} set={set} checkpoint={checkpoint} />
+            <SilenceTool clip={clip} />
+          </>
+        )}
       </Body>
     </>
   );
@@ -467,7 +475,7 @@ function VolumeSection({ clip, set, checkpoint }: { clip: MediaClip; set: SetFn;
   );
 }
 
-function AudioInspector({ clip, set, checkpoint, credit, license }: { clip: MediaClip; set: SetFn; checkpoint: () => void; credit?: string; license?: string }) {
+function AudioInspector({ clip, set, checkpoint, credit, license, origin }: { clip: MediaClip; set: SetFn; checkpoint: () => void; credit?: string; license?: string; origin?: string }) {
   const { project, preview } = useEditor();
   return (
     <Body>
@@ -475,6 +483,7 @@ function AudioInspector({ clip, set, checkpoint, credit, license }: { clip: Medi
       <Section title="Tezlik">
         <Slider label="Tezlik" value={clip.speed} min={0.25} max={4} step={0.05} unit="x" onDown={checkpoint} onChange={(v) => preview(setClipSpeed(project, clip.id, v))} />
       </Section>
+      {origin === "music" || origin === "demo" ? <BeatTool clip={clip} /> : <SilenceTool clip={clip} />}
       {(credit || license) && (
         <Section title="Litsenziya">
           <div className="rounded-lg bg-white/[0.03] ring-1 ring-white/[0.06] p-2.5 text-[10.5px] text-white/55 leading-relaxed">

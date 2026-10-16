@@ -8,7 +8,8 @@ import { Logo } from "@/components/Logo";
 import { ASPECTS } from "../presets";
 import { useEditor } from "../store";
 import type { AspectRatio } from "../types";
-import { clearSavedProject } from "../persist";
+import { CloudMenu } from "./CloudMenu";
+import { TemplatePicker } from "./TemplatePicker";
 
 const SHORTCUTS: [string, string][] = [
   ["Space", "Ijro / pauza"],
@@ -28,6 +29,7 @@ export function TopBar({ onExport, compact = false, saved = true }: { onExport: 
   const { project, commit, preview, checkpoint, undo, redo, canUndo, canRedo } = useEditor();
   const [aspectOpen, setAspectOpen] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const ib = "size-8 grid place-items-center rounded-md text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent";
 
   return (
@@ -115,20 +117,16 @@ export function TopBar({ onExport, compact = false, saved = true }: { onExport: 
           )}
         </div>
       )}
-      {!compact && (
-        <button
-          className={ib}
-          title="Yangi loyiha"
-          onClick={() => {
-            if (window.confirm("Joriy loyiha tozalanadi va demo loyiha ochiladi. Davom etasizmi?")) {
-              clearSavedProject();
-              window.location.reload();
-            }
-          }}
-        >
-          <FilePlus2 className="size-4" />
-        </button>
-      )}
+      <button
+        className={cn(ib, !compact && "w-auto px-2.5 gap-1.5 text-[12px] inline-flex items-center")}
+        title="Yangi loyiha va shablonlar"
+        onClick={() => setTemplatesOpen(true)}
+      >
+        <FilePlus2 className="size-4" />
+        {!compact && "Shablonlar"}
+      </button>
+      <TemplatePicker open={templatesOpen} onClose={() => setTemplatesOpen(false)} />
+      <CloudMenu compact={compact} />
       <button
         onClick={onExport}
         title="Eksport"

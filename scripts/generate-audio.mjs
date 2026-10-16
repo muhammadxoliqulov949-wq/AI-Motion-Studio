@@ -1,6 +1,5 @@
 // Synthesizes the montage sound library into public/audio so we ship license-free assets.
 // Usage: node scripts/generate-audio.mjs
-/* global console */
 import { Buffer } from "node:buffer";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";

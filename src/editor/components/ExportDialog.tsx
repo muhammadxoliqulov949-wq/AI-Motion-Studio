@@ -4,6 +4,7 @@ import { CheckCircle2, Copy, Download, Film, Loader2, TriangleAlert, X } from "l
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { NOTO_LICENSE } from "../catalog/stickers";
+import { accessToken } from "../cloud";
 import { TimelineComposition } from "../composition/TimelineComposition";
 import { ASPECTS } from "../presets";
 import { useEditor } from "../store";
@@ -40,6 +41,7 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
   const [format, setFormat] = useState("mp4");
   const [quality, setQuality] = useState("high");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [where, setWhere] = useState<"browser" | "server">("browser");
   const [copied, setCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const total = projectDuration(project);
@@ -65,7 +67,46 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   const blobSources = assets.filter((a) => a.src?.startsWith("blob:")).length;
 
+  /** Remotion Lambda: renders in the cloud, polls progress, returns a download URL. */
+  const startServer = async () => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setPhase({ kind: "rendering", progress: 0 });
+    try {
+      const token = await accessToken();
+      const res = await fetch("/api/lambda/render-timeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ project: { ...project, fps }, assets, scale, format: fmt.id === "wav" ? "mp3" : fmt.id }),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      while (!controller.signal.aborted) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const p = await fetch("/api/lambda/progress", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: data.renderId, bucketName: data.bucketName }),
+        }).then((r) => r.json());
+        if (p.type === "error") throw new Error(p.message);
+        const d = p.data;
+        if (d.type === "error") throw new Error(d.message);
+        if (d.type === "progress") setPhase({ kind: "rendering", progress: Math.min(99.5, d.progress * 100) });
+        if (d.type === "done") {
+          setPhase({ kind: "done", url: d.url, size: d.size, name: `${project.name}.${fmt.id === "wav" ? "mp3" : fmt.container}` });
+          return;
+        }
+      }
+      setPhase({ kind: "idle" });
+    } catch (err) {
+      if (controller.signal.aborted) setPhase({ kind: "idle" });
+      else setPhase({ kind: "error", message: (err as Error).message || "Server render bajarilmadi" });
+    }
+  };
+
   const start = async () => {
+    if (where === "server") return startServer();
     const controller = new AbortController();
     abortRef.current = controller;
     setPhase({ kind: "rendering", progress: 0 });
@@ -129,6 +170,23 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
 
         {phase.kind === "idle" || phase.kind === "error" ? (
           <>
+            <Field label="Qayerda render qilinsin">
+              <div className="grid grid-cols-2 gap-2">
+                <Opt active={where === "browser"} onClick={() => setWhere("browser")} title="Kompyuteringizda, WebCodecs bilan">
+                  Brauzerda
+                </Opt>
+                <Opt active={where === "server"} onClick={() => setWhere("server")} title="Remotion Lambda (AWS) — tezroq, Safari va uzun videolar uchun">
+                  Serverda (tez)
+                </Opt>
+              </div>
+              <p className="text-[10px] text-white/35 mt-1.5">
+                {where === "server"
+                  ? blobSources
+                    ? "Yuklangan fayllar serverga ko'rinishi uchun tizimga kiring — ular bulutga yuklanadi."
+                    : "AWS Lambda'da parallel render — uzun videolar ham bir necha daqiqada tayyor."
+                  : "Kompyuteringiz resursi bilan, fayllar hech qayerga yuborilmaydi."}
+              </p>
+            </Field>
             <Field label="Format">
               <div className="grid grid-cols-4 gap-2">
                 {FORMATS.map((f) => (

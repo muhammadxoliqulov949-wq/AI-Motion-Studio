@@ -31,6 +31,7 @@
     "@remotion/three": "4.0.535",
     "@remotion/transitions": "4.0.535",
     "@remotion/web-renderer": "4.0.535",
+    "@supabase/supabase-js": "2.58.0",
     "ai": "5.0.104",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

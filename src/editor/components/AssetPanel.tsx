@@ -5,6 +5,7 @@ import {
   Check,
   Clapperboard,
   Loader2,
+  Mic,
   Music2,
   Palette,
   Pause,
@@ -22,7 +23,6 @@ import { cn } from "@/lib/utils";
 import {
   GENRES,
   MOODS,
-  MUSIC,
   SFX,
   SFX_CATEGORIES,
   genreGradient,
@@ -39,12 +39,15 @@ import { EMOJI_CATEGORIES, EMOJI_STICKERS, SHAPE_STICKERS } from "../catalog/sti
 import { TEXT_TEMPLATE_GROUPS, TEXT_TEMPLATES, type TextTemplateGroup } from "../catalog/text-templates";
 import { TRANSITION_DEFS, TRANSITION_GROUPS, type TransitionGroup } from "../catalog/transitions";
 import { importFile } from "../import-media";
+import { saveMedia } from "../media-store";
 import { clipsOnTrack, updateClip } from "../ops";
 import { useEditor } from "../store";
 import type { MediaAsset, TextClip } from "../types";
 import { formatShort } from "../utils";
 import { useAudioPreview, useInsert, useRealPeaks } from "./assets/use-insert";
 import { AutoCaptions } from "./AutoCaptions";
+import { StockBrowser } from "./StockBrowser";
+import { VoicePanel } from "./VoicePanel";
 import { DND } from "./dnd";
 import { CategoryBar, Empty, PanelHeader, SearchBox, Segmented, Slider, Switch } from "./ui";
 
@@ -104,6 +107,26 @@ function Head({ children }: { children: React.ReactNode }) {
 // ---------------- Media ----------------
 
 function MediaTab() {
+  const [mode, setMode] = useState<"mine" | "videos" | "photos">("mine");
+  return (
+    <>
+      <div className="shrink-0 px-3 pt-3">
+        <Segmented
+          value={mode}
+          onChange={setMode}
+          options={[
+            ["mine", "Mening media"],
+            ["videos", "Stok video"],
+            ["photos", "Stok rasm"],
+          ]}
+        />
+      </div>
+      {mode === "mine" ? <MyMedia /> : <StockBrowser key={mode} type={mode} />}
+    </>
+  );
+}
+
+function MyMedia() {
   const { assets, addAssets } = useEditor();
   const insert = useInsert();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -111,7 +134,7 @@ function MediaTab() {
   const [over, setOver] = useState(false);
   const [filter, setFilter] = useState<"all" | "video" | "image" | "audio">("all");
 
-  const list = assets.filter((a) => (a.origin !== "music" && a.origin !== "sfx") && (filter === "all" || a.kind === filter));
+  const list = assets.filter((a) => a.origin !== "music" && a.origin !== "sfx" && (filter === "all" || a.kind === filter));
 
   const handleFiles = async (files: FileList | File[]) => {
     const arr = Array.from(files);
@@ -119,7 +142,11 @@ function MediaTab() {
     for (const file of arr) {
       try {
         const asset = await importFile(file);
-        if (asset) addAssets([{ ...asset, origin: "upload" }]);
+        if (asset) {
+          const stored = { ...asset, origin: "upload" as const };
+          addAssets([stored]);
+          void saveMedia(stored, file);
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -225,7 +252,7 @@ function MediaTile({ asset, onAdd }: { asset: MediaAsset; onAdd: () => void }) {
 // ---------------- Audio ----------------
 
 function AudioTab() {
-  const [mode, setMode] = useState<"music" | "sfx">("music");
+  const [mode, setMode] = useState<"music" | "sfx" | "voice">("music");
   const preview = useAudioPreview();
   useEffect(() => () => preview.stop(), []);
   return (
@@ -235,12 +262,19 @@ function AudioTab() {
           value={mode}
           onChange={setMode}
           options={[
-            ["music", <><Music2 className="size-3" /> Musiqa · {MUSIC.length}</>],
-            ["sfx", <><AudioLines className="size-3" /> Tovush effektlari · {SFX.length}</>],
+            ["music", <><Music2 className="size-3" /> Musiqa</>],
+            ["sfx", <><AudioLines className="size-3" /> Effektlar</>],
+            ["voice", <><Mic className="size-3" /> AI ovoz</>],
           ]}
         />
       </Head>
-      {mode === "music" ? <MusicList /> : <SfxList />}
+      {mode === "music" && <MusicList />}
+      {mode === "sfx" && <SfxList />}
+      {mode === "voice" && (
+        <Scroll className="pt-3">
+          <VoicePanel />
+        </Scroll>
+      )}
     </>
   );
 }

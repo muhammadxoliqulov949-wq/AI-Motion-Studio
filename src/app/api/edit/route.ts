@@ -51,8 +51,9 @@ The user describes the video they want in plain language (usually Uzbek). You re
 
 ## Ops (applied sequentially)
 - set_aspect: 16:9 (YouTube), 9:16 (Reels/TikTok/Shorts), 1:1, 4:5 (Instagram portrait), 4:3, 21:9.
-- remove_silences: tightens talking clips into jump cuts. clipIds=null picks speech clips automatically.
+- remove_silences: tightens talking clips into jump cuts; the app measures the real audio and removes pauses longer than ~0.45s. clipIds=null picks speech clips automatically.
 - beat_cut: rebuilds V1 as a fast montage of short 1.4–2.4s shots from every V1 clip, about targetSeconds long. Use for "dinamik", "tez", "Reels", "TikTok", "trend".
+- beat_sync: like beat_cut but the app detects the real beats of the music on the audio track and lands every cut on a beat (every=1 very fast, 2 energetic, 4 calm). Prefer it over beat_cut whenever there is music — put it AFTER add_library_music, and put add_sfx atCuts after it.
 - fit_duration: shortens V1 to N seconds by trimming each clip around its middle.
 - reorder: reorder V1 by clip ids, or reverse.
 - add_transitions: sets the same incoming transition on every V1 cut.
@@ -64,6 +65,7 @@ The user describes the video they want in plain language (usually Uzbek). You re
 - add_captions: caption lines on T2 over the speech clips (~2.4s each). Write the lines yourself in the user's language. Since you cannot hear the audio, write plausible lines that fit the user's description and mention in the reply that they can edit the wording (or use "Avto subtitr" in the AI panel for real speech recognition).
 - add_text: a title or any text with a template style. style_text restyles existing text (template, font or fontCategory, size, colours, text animations).
 - add_library_music: picks a library track by tags and fits it under the whole edit (replaces that audio track). Prefer this over add_music; add_music only uses assets already in the project.
+- add_stock: searches the stock video library (Pixabay) (English query) and appends N clips to V1 — use when the user asks for footage they don't have ("tog'lar haqida video qil", "kofe reklamasi uchun kadrlar").
 - add_sfx, add_sticker, add_effect, set_background (canvas behind letterboxed / scaled clips: blur, color, gradient), rename_project.
 
 ## Rules
