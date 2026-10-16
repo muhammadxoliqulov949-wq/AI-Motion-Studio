@@ -3,6 +3,7 @@
 import { Activity, AudioWaveform, Loader2, Scissors } from "lucide-react";
 import { useState } from "react";
 import { analyzeMusicBeats, beatsOnTimeline, cutToBeats, removeSilencesFromClip, type BeatInfo } from "../audio-analysis";
+import { updateClip } from "../ops";
 import { useEditor } from "../store";
 import type { MediaClip } from "../types";
 import { Chips, Section, Slider } from "./ui";
@@ -124,6 +125,32 @@ export function BeatTool({ clip }: { clip: MediaClip }) {
         </button>
       </div>
       {note && <Note {...note} />}
+    </Section>
+  );
+}
+
+/** CapCut "Replace": swap the media under a clip but keep its timing, effects and animations. */
+export function ReplaceMedia({ clip }: { clip: MediaClip }) {
+  const { project, assets, commit } = useEditor();
+  const options = assets.filter((a) => (a.kind === "video" || a.kind === "image") && a.id !== clip.assetId && a.origin !== "music" && a.origin !== "sfx");
+  if (!options.length) return null;
+  return (
+    <Section title="Mediani almashtirish">
+      <div className="grid grid-cols-4 gap-1.5">
+        {options.map((a) => (
+          <button
+            key={a.id}
+            title={a.name}
+            onClick={() => {
+              const duration = a.kind === "video" ? Math.min(clip.duration, a.duration / clip.speed) : clip.duration;
+              commit(updateClip(project, clip.id, { assetId: a.id, in: 0, duration: Math.round(duration * 1000) / 1000 }));
+            }}
+            className="aspect-video rounded-md ring-1 ring-white/10 hover:ring-cyan-300/70 bg-center bg-cover"
+            style={{ backgroundImage: a.thumbs?.length ? `url(${a.thumbs[0]})` : undefined, background: a.thumbs?.length ? undefined : a.gradient }}
+          />
+        ))}
+      </div>
+      <p className="text-[10px] text-white/35">Vaqt, effekt va animatsiyalar saqlanadi — faqat kadr almashadi.</p>
     </Section>
   );
 }
