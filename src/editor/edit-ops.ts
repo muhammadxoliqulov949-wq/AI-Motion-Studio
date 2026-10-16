@@ -48,6 +48,12 @@ export const EditOpSchema = z.union([
     clipIds: z.array(z.string()).nullable().describe("Speech clips to tighten; null = all detected speech clips"),
   }),
   z.object({
+    op: z.literal("add_stock"),
+    query: z.string().describe("English search words for Pexels stock video, e.g. \"tashkent city night\", \"coffee shop\""),
+    count: z.number().describe("How many clips to add, 1–8"),
+    secondsEach: z.number().nullable().describe("Length of each clip on the timeline, default 4"),
+  }),
+  z.object({
     op: z.literal("beat_sync"),
     every: z.number().describe("Cut every N music beats: 1 = very fast, 2 = energetic (default), 4 = calm"),
     maxSeconds: z.number().nullable().describe("Stop the montage after this many seconds; null = until the music ends"),
@@ -228,6 +234,9 @@ export interface OpAnalysis {
   /** Music beat times on the timeline. */
   beats?: number[];
   bpm?: number;
+  /** Stock clips fetched for add_stock. */
+  stock?: MediaAsset[];
+  stockError?: string;
 }
 
 interface Ctx {
@@ -604,6 +613,22 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
   rename_project: (ctx, { name }) => {
     ctx.project = { ...ctx.project, name };
     step(ctx, "Loyiha nomi", name, `project.rename(${JSON.stringify(name)})`);
+  },
+
+  add_stock: (ctx, { query, count, secondsEach }) => {
+    const found = ctx.analysis?.stock ?? [];
+    if (!found.length) return warn(ctx, ctx.analysis?.stockError ?? `Stok video topilmadi: "${query}"`);
+    let p = migrateProject(ctx.project);
+    let at = p.clips.filter((c) => c.trackId === "V1").reduce((m, c) => Math.max(m, clipEnd(c)), 0);
+    const len = clamp(secondsEach ?? 4, 1, 20);
+    for (const asset of found.slice(0, clamp(Math.round(count), 1, 8))) {
+      useAsset(ctx, asset);
+      const clip = makeMediaClip(asset, "V1", round(at, 3), { duration: round(Math.min(len, asset.duration), 3), fit: "cover" });
+      p = { ...p, clips: [...p.clips, clip] };
+      at += clip.duration;
+    }
+    ctx.project = p;
+    step(ctx, "Stok video (Pexels)", `"${query}" — ${Math.min(found.length, count)} ta klip qo'shildi`, `stock.add(${JSON.stringify(query)}, ${count})`);
   },
 
   beat_sync: (ctx, { every, maxSeconds }) => {

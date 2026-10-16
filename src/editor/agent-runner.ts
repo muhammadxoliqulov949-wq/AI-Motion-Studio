@@ -5,9 +5,10 @@
 import { beatsOnTimeline, decodeAudio, detectBeats, detectSpeech } from "./audio-analysis";
 import { applyOps, isSpeechAsset, type AgentStep, type EditOp, type OpAnalysis } from "./edit-ops";
 import { clipsOnTrack } from "./ops";
+import { searchStock, StockError, stockToAsset } from "./stock";
 import type { MediaAsset, MediaClip, Project } from "./types";
 
-const ANALYSED = new Set(["remove_silences", "beat_sync"]);
+const ANALYSED = new Set(["remove_silences", "beat_sync", "add_stock"]);
 
 const analyse = async (op: EditOp, project: Project, assets: MediaAsset[]): Promise<OpAnalysis | undefined> => {
   const find = (c: MediaClip) => assets.find((a) => a.id === c.assetId);
@@ -27,6 +28,14 @@ const analyse = async (op: EditOp, project: Project, assets: MediaAsset[]): Prom
       }
     }
     return { speech };
+  }
+  if (op.op === "add_stock") {
+    try {
+      const r = await searchStock("videos", op.query, project.aspect);
+      return { stock: r.items.slice(0, Math.max(1, Math.min(8, Math.round(op.count)))).map(stockToAsset) };
+    } catch (err) {
+      return { stockError: err instanceof StockError && err.code === "no_api_key" ? "Stok video uchun serverda PEXELS_API_KEY kerak" : (err as Error).message };
+    }
   }
   if (op.op === "beat_sync") {
     const music = project.tracks
