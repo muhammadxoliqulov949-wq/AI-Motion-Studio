@@ -1,4 +1,4 @@
-import { findFootage } from "@/montage/server/pexels";
+import { findFootage, findPixabayFootage } from "@/montage/server/pexels";
 import { buildUserPrompt, MONTAGE_SYSTEM_PROMPT } from "@/montage/server/prompt";
 import {
   GenerateMontageRequestSchema,
@@ -67,10 +67,12 @@ export async function POST(req: Request) {
   }));
   if (!scenes.length) return fail(502, "AI bitta ham kadr qaytarmadi.", "model_error");
 
+  // Pixabay first (the editor's stock library uses it too), Pexels as a fallback.
+  const pixabayKey = process.env.PIXABAY_API_KEY ?? process.env.PIXABAY_KEY;
   const pexelsKey = process.env.PEXELS_API_KEY;
   let planned: PlannedScene[];
-  if (!pexelsKey) {
-    warnings.push("PEXELS_API_KEY sozlanmagan — fon videolar o'rniga gradient ishlatildi.");
+  if (!pixabayKey && !pexelsKey) {
+    warnings.push("PIXABAY_API_KEY sozlanmagan — fon videolar o'rniga gradient ishlatildi.");
     planned = scenes.map((s) => ({ ...s, footage: null }));
   } else {
     // Searches run in parallel; the shared set still prevents duplicates because each
@@ -78,7 +80,9 @@ export async function POST(req: Request) {
     const used = new Set<string>();
     planned = await Promise.all(
       scenes.map(async (scene) => {
-        const footage = await findFootage(scene.visual_search_query, input.aspect, pexelsKey, used);
+        const footage = pixabayKey
+          ? await findPixabayFootage(scene.visual_search_query, input.aspect, pixabayKey, used)
+          : await findFootage(scene.visual_search_query, input.aspect, pexelsKey!, used);
         if (!footage) warnings.push(`"${scene.visual_search_query}" uchun video topilmadi — gradient ishlatildi.`);
         return { ...scene, footage };
       }),
