@@ -4,6 +4,8 @@ import {
   SKILL_NAMES,
   type SkillName,
 } from "@/skills";
+import { rateLimit, rateLimitedResponse } from "@/lib/rate-limit";
+import { MODELS } from "@/types/generation";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject, streamText } from "ai";
 import { z } from "zod";
@@ -294,18 +296,56 @@ interface GenerateResponse {
   };
 }
 
+const MAX_PROMPT = 2_000;
+const MAX_CODE = 100_000;
+const MAX_HISTORY = 6;
+const MAX_IMAGES = 4;
+const ALLOWED_MODELS = new Set<string>(["gpt-5.2", ...MODELS.map((m) => m.id)]);
+
+/** Each request can make up to three model calls, so this is tighter than /api/edit. */
+const RATE_LIMIT = { name: "generate", limit: 10, windowMs: 10 * 60 * 1000 };
+
+function badRequest(error: string, code: string, status = 400) {
+  return Response.json({ error, code }, { status });
+}
+
 export async function POST(req: Request) {
+  // Runs before the API key check so it also guards (and is testable on) key-less deploys.
+  const limited = await rateLimit(req, RATE_LIMIT);
+  if (!limited.ok) return rateLimitedResponse(limited);
+
+  let body: GenerateRequest;
+  try {
+    body = await req.json();
+  } catch {
+    return badRequest("Noto'g'ri JSON", "bad_request");
+  }
   const {
     prompt,
     model = "gpt-5.2",
     currentCode,
-    conversationHistory = [],
     isFollowUp = false,
     hasManualEdits = false,
     errorCorrection,
     previouslyUsedSkills = [],
-    frameImages,
-  }: GenerateRequest = await req.json();
+  } = body;
+
+  if (typeof prompt !== "string" || !prompt.trim()) {
+    return badRequest("prompt kerak", "bad_request");
+  }
+  if (prompt.length > MAX_PROMPT) {
+    return badRequest(`So'rov juda uzun (ko'pi bilan ${MAX_PROMPT} belgi)`, "too_large", 413);
+  }
+  if (typeof currentCode === "string" && currentCode.length > MAX_CODE) {
+    return badRequest("Kod juda katta", "too_large", 413);
+  }
+  if (!ALLOWED_MODELS.has(model)) {
+    return badRequest("Bu model qo'llab-quvvatlanmaydi", "bad_request");
+  }
+  const conversationHistory = (Array.isArray(body.conversationHistory) ? body.conversationHistory : []).slice(
+    -MAX_HISTORY,
+  );
+  const frameImages = Array.isArray(body.frameImages) ? body.frameImages.slice(0, MAX_IMAGES) : undefined;
 
   const apiKey = process.env.OPENAI_API_KEY;
 

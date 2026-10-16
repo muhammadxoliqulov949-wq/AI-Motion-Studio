@@ -74,6 +74,7 @@ export const planLocally = (prompt: string, project: Project, selectedId: string
   }
   if (has(text, ["qora-oq", "oq-qora", "qora oq", "mono", "b&w", "black and white"])) ops.push(grade("mono", { vignette: true }));
   if (has(text, ["vintaj", "retro", "eski", "vintage", "90"])) ops.push(grade("vintage", { grain: true, vignette: true }));
+  if (has(text, ["iliq kino", "oltin"])) ops.push(grade("golden"));
   if (has(text, ["yorqin", "vivid", "rangli", "jonli"])) ops.push(grade("vivid"));
   if (has(text, ["iliq", "warm"])) ops.push(grade("warm"));
   if (has(text, ["sovuq", "cool", "moviy"])) ops.push(grade("cool"));
@@ -91,6 +92,48 @@ export const planLocally = (prompt: string, project: Project, selectedId: string
     ops.push({ op: "add_text", text: quoted ?? "Mening hikoyam", style: dynamic ? "pop" : "title", start: 0, duration: 3, position: "center" });
   }
   const wantsMusic = has(text, ["musiqa", "music", "fon", "qo'shiq", "audio"]);
+  const vintage = has(text, ["vintaj", "retro", "eski", "vintage", "90"]);
+  const calm = has(text, ["sokin", "tinch", "xotirjam", "romantik", "calm", "chill", "lo-fi", "lofi"]);
+  const musicTags = dynamic
+    ? ["electronic", "driving", "uplifting"]
+    : cinematic
+      ? ["cinematic", "epic"]
+      : vintage
+        ? ["jazz", "relaxed"]
+        : calm
+          ? ["chill", "relaxed", "calm"]
+          : has(text, ["kulgili", "funny", "quvnoq"])
+            ? ["funny", "bouncy"]
+            : has(text, ["qo'rqinchli", "horror", "dahshat"])
+              ? ["horror", "dark"]
+              : ["uplifting", "bright"];
+  const libraryMusic: EditOp = { op: "add_library_music", tags: musicTags, trackId: null, volume: null };
+
+  // Library extras: SFX, stickers, effects, fonts, animations.
+  if (has(text, ["whoosh", "tovush effekt", "sfx", "effekt tovush", "o'tish tovush"]) || (dynamic && !formatOnly)) {
+    ops.push({ op: "add_sfx", tags: ["whoosh"], at: null, atCuts: true, volume: null });
+  }
+  if (has(text, ["qarsak", "applause", "olqish"])) ops.push({ op: "add_sfx", tags: ["applause"], at: [Math.max(0, rawTotal - 4)], atCuts: false, volume: null });
+  if (has(text, ["emoji", "stiker", "sticker", "smayl"])) {
+    ops.push({ op: "add_sticker", sticker: has(text, ["yurak", "sevgi", "love"]) ? "red-heart" : has(text, ["kulgi", "kulgili", "laugh"]) ? "joy" : "fire", start: 1, duration: 2.5, x: 28, y: -25, scale: 0.8 });
+  }
+  const effectWords: [string[], string][] = [
+    [["glitch"], "glitch"],
+    [["vhs", "kasseta"], "vhs"],
+    [["konfetti", "bayram", "tabrik"], "confetti"],
+    [["qor", "snow", "qish"], "snow"],
+    [["yomg'ir", "rain"], "rain"],
+    [["chaqnash", "flash"], "flash"],
+    [["eski kino", "old film"], "old-film"],
+    [["titra", "shake", "zilzila"], "shake"],
+    [["yurakcha", "hearts"], "hearts"],
+  ];
+  for (const [words, effect] of effectWords) {
+    if (has(text, words)) ops.push({ op: "add_effect", effect: effect as Extract<EditOp, { op: "add_effect" }>["effect"], start: 0, duration: Math.max(2, Math.min(8, rawTotal || 4)), intensity: null });
+  }
+  if (has(text, ["animatsiya", "animation", "jonlantir"])) {
+    ops.push({ op: "set_animation", clipIds: null, animIn: "in:zoom-in", animOut: null, animCombo: null, duration: 0.5 });
+  }
 
   if (polish || ops.length === 0) {
     if (!polish) ops.push({ op: "fit_duration", seconds: Math.min(30, Math.round(rawTotal * 0.6)) });
@@ -99,9 +142,27 @@ export const planLocally = (prompt: string, project: Project, selectedId: string
     if (!project.clips.some((c) => c.type === "text")) {
       ops.push({ op: "add_text", text: quoted ?? "Mening hikoyam", style: "title", start: 0, duration: 3, position: "center" });
     }
-    if (!project.clips.some((c) => c.trackId === "A1")) ops.push({ op: "add_music", assetId: null, volume: null });
+    if (!project.clips.some((c) => c.trackId === "A1")) ops.push(libraryMusic);
   } else if (wantsMusic || (dynamic && !project.clips.some((c) => c.trackId === "A1"))) {
-    ops.push({ op: "add_music", assetId: null, volume: null });
+    ops.push(libraryMusic);
+  }
+  if (has(text, ["shrift", "font"])) {
+    ops.push({
+      op: "style_text",
+      clipIds: null,
+      template: null,
+      font: null,
+      fontCategory: has(text, ["qo'lyozma", "handwriting", "yozma"]) ? "handwriting" : has(text, ["klassik", "serif", "nafis"]) ? "serif" : "display",
+      fontSize: null,
+      color: null,
+      strokeColor: null,
+      strokeWidth: null,
+      bgColor: null,
+      highlightColor: null,
+      textIn: "pop-words",
+      textOut: null,
+      textLoop: null,
+    });
   }
   return ops;
 };
@@ -110,6 +171,8 @@ export const suggestFor = (p: Project) => {
   const out: string[] = [];
   if (!p.clips.some((c) => c.type === "text" && c.style === "caption")) out.push("Subtitr qo'sh");
   if (!p.clips.some((c) => c.trackId === "A1")) out.push("Fon musiqa qo'y");
+  if (!p.clips.some((c) => c.trackId === "A2")) out.push("Kesishlarga whoosh tovushi qo'sh");
+  if (!p.clips.some((c) => c.type === "sticker")) out.push("Emoji stiker qo'sh");
   if (p.grade.filter === "none") out.push("Sinematik ranglar ber");
   if (p.aspect !== "9:16") out.push("Reels formatiga o'tkaz");
   out.push("Yanada dinamikroq qil", "Ikkinchi kadrni slow-motion qil");

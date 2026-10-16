@@ -15,7 +15,9 @@ import { cn } from "@/lib/utils";
 import { TimelineComposition } from "../composition/TimelineComposition";
 import { ASPECTS } from "../presets";
 import { useCurrentTime, useEditor, useIsPlaying } from "../store";
-import { formatTime, projectDuration } from "../utils";
+import { setKeyframe, valueAt } from "../keyframes";
+import type { Clip, KeyframeProp } from "../types";
+import { clamp, formatTime, projectDuration, round } from "../utils";
 
 export function PreviewPanel({ aiBusy, compact = false }: { aiBusy: boolean; compact?: boolean }) {
   const { project, assets, playerRef, playhead } = useEditor();
@@ -62,7 +64,7 @@ export function PreviewPanel({ aiBusy, compact = false }: { aiBusy: boolean; com
   return (
     <div className="flex flex-col h-full min-w-0">
       <div className={cn("flex items-center justify-between h-10 px-4 text-xs text-white/50 border-b border-white/[0.06]", compact && "hidden")}>
-        <span className="font-medium text-white/70">Preview</span>
+        <span className="font-medium text-white/70">Ko&apos;rish oynasi</span>
         <span>
           {width}×{height} · {project.fps}fps · {ASPECTS[project.aspect].label}
         </span>
@@ -86,6 +88,7 @@ export function PreviewPanel({ aiBusy, compact = false }: { aiBusy: boolean; com
               doubleClickToFullscreen
               acknowledgeRemotionLicense
             />
+            <DirectManipulation width={size.w} height={size.h} />
             {aiBusy && (
               <div className="absolute inset-0 pointer-events-none ai-scan">
                 <div className="absolute inset-0 bg-violet-500/10" />
@@ -145,6 +148,66 @@ function Transport({ total, compact }: { total: number; compact: boolean }) {
         <button className={btn} onClick={() => playerRef.current?.requestFullscreen()} title="To'liq ekran">
           <Maximize2 className="size-4" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+/** Drag the selected text / sticker / overlay directly on the preview (CapCut-style); wheel scales it. */
+function DirectManipulation({ width, height }: { width: number; height: number }) {
+  const { project, selectedId, preview, commit, checkpoint, togglePlay } = useEditor();
+  const time = useCurrentTime();
+  const clip = project.clips.find((c) => c.id === selectedId);
+  const drag = useRef<{ x0: number; y0: number; bx: number; by: number; moved: boolean } | null>(null);
+  if (!clip || clip.type === "effect") return null;
+  if (clip.type === "media" && project.tracks.find((tr) => tr.id === clip.trackId)?.kind === "audio") return null;
+  const t = time - clip.start;
+  if (t < 0 || t > clip.duration) return null;
+
+  const write = (patch: Partial<Record<KeyframeProp, number>>, live: boolean) => {
+    let next: Clip = clip;
+    for (const [prop, v] of Object.entries(patch) as [KeyframeProp, number][]) {
+      next = next.keyframes?.[prop]?.length ? setKeyframe(next, prop, t, v) : ({ ...next, [prop]: v } as Clip);
+    }
+    const p = { ...project, clips: project.clips.map((c) => (c.id === clip.id ? next : c)) };
+    if (live) preview(p);
+    else commit(p);
+  };
+
+  return (
+    <div
+      className="absolute inset-0 cursor-move"
+      title="Sudrab joylashtiring, g'ildirak bilan masshtab"
+      onPointerDown={(e) => {
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        drag.current = { x0: e.clientX, y0: e.clientY, bx: valueAt(clip, "x", t), by: valueAt(clip, "y", t), moved: false };
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d) return;
+        const dx = e.clientX - d.x0;
+        const dy = e.clientY - d.y0;
+        if (!d.moved) {
+          if (Math.hypot(dx, dy) < 4) return;
+          d.moved = true;
+          checkpoint();
+        }
+        write({ x: round(clamp(d.bx + (dx / width) * 100, -150, 150), 2), y: round(clamp(d.by + (dy / height) * 100, -150, 150), 2) }, true);
+      }}
+      onPointerUp={() => {
+        const d = drag.current;
+        drag.current = null;
+        if (d && !d.moved) togglePlay();
+      }}
+      onWheel={(e) => {
+        const sc = valueAt(clip, "scale", t);
+        checkpoint();
+        write({ scale: round(clamp(sc * (e.deltaY < 0 ? 1.06 : 0.94), 0.1, 6), 3) }, false);
+      }}
+    >
+      <div className="absolute inset-0 ring-1 ring-inset ring-cyan-300/50 pointer-events-none" />
+      <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-cyan-400 text-black text-[10px] font-semibold pointer-events-none">
+        Sudrab joylashtiring
       </div>
     </div>
   );
