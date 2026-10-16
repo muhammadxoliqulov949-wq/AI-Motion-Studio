@@ -1,8 +1,12 @@
 import { VoiceRequestSchema, type ApiError } from "@/montage/types";
 import { createOpenAI } from "@ai-sdk/openai";
 import { experimental_generateSpeech as generateSpeech } from "ai";
+import { rateLimit, rateLimitedResponse } from "@/lib/rate-limit";
 
 export const maxDuration = 30;
+
+// One call per scene, up to 8 scenes per montage.
+const RATE_LIMIT = { name: "montage-voice", limit: 60, windowMs: 10 * 60 * 1000 };
 
 const fail = (status: number, error: string, code: ApiError["code"]) =>
   Response.json({ error, code } satisfies ApiError, { status });
@@ -12,6 +16,9 @@ const fail = (status: number, error: string, code: ApiError["code"]) =>
  * exact duration and stretch the scene to fit the voiceover.
  */
 export async function POST(req: Request) {
+  const limited = await rateLimit(req, RATE_LIMIT);
+  if (!limited.ok) return rateLimitedResponse(limited);
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return fail(503, 'Serverda "OPENAI_API_KEY" sozlanmagan.', "no_api_key");
 

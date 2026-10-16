@@ -10,8 +10,12 @@ import {
 } from "@/montage/types";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
+import { rateLimit, rateLimitedResponse } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
+
+// Each montage = one LLM call + up to 8 stock searches.
+const RATE_LIMIT = { name: "montage", limit: 6, windowMs: 10 * 60 * 1000 };
 
 const MIN_FRAMES = 60;
 const MAX_FRAMES = 240;
@@ -26,6 +30,9 @@ const fail = (status: number, error: string, code: ApiError["code"]) =>
  * Voiceover is generated separately per scene via /api/generate-montage/voice.
  */
 export async function POST(req: Request) {
+  const limited = await rateLimit(req, RATE_LIMIT);
+  if (!limited.ok) return rateLimitedResponse(limited);
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return fail(503, 'Serverda "OPENAI_API_KEY" sozlanmagan.', "no_api_key");
 

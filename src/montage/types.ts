@@ -86,5 +86,5 @@ export const VoiceRequestSchema = z.object({
 
 export interface ApiError {
   error: string;
-  code: "no_api_key" | "bad_request" | "model_error" | "tts_error";
+  code: "no_api_key" | "bad_request" | "model_error" | "tts_error" | "rate_limited";
 }
