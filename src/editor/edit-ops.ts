@@ -49,7 +49,7 @@ export const EditOpSchema = z.union([
   }),
   z.object({
     op: z.literal("add_stock"),
-    query: z.string().describe("English search words for Pexels stock video, e.g. \"tashkent city night\", \"coffee shop\""),
+    query: z.string().describe("English search words for the stock video library (Pixabay), e.g. \"tashkent city night\", \"coffee shop\""),
     count: z.number().describe("How many clips to add, 1–8"),
     secondsEach: z.number().nullable().describe("Length of each clip on the timeline, default 4"),
   }),
@@ -628,7 +628,7 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
       at += clip.duration;
     }
     ctx.project = p;
-    step(ctx, "Stok video (Pexels)", `"${query}" — ${Math.min(found.length, count)} ta klip qo'shildi`, `stock.add(${JSON.stringify(query)}, ${count})`);
+    step(ctx, "Stok video", `"${query}" — ${Math.min(found.length, count)} ta klip qo'shildi`, `stock.add(${JSON.stringify(query)}, ${count})`);
   },
 
   beat_sync: (ctx, { every, maxSeconds }) => {

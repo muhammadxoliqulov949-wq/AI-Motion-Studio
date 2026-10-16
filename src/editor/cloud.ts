@@ -60,17 +60,21 @@ export const signOut = async () => {
 };
 
 const isFileAsset = (a: MediaAsset) => a.origin === "upload" || a.origin === "voice";
+/** Stock clips are copied into the user's storage too: Pixabay does not allow permanent hotlinking. */
+const shouldStore = (a: MediaAsset) => isFileAsset(a) || a.origin === "stock";
 
 /** Uploads local files (uploads / voiceovers) that are not in storage yet; returns updated assets. */
 export const ensureUploaded = async (assets: MediaAsset[], userId: string, onProgress?: (done: number, total: number) => void) => {
   const sb = getSupabase();
   if (!sb) return assets;
-  const pending = assets.filter((a) => isFileAsset(a) && !a.storagePath && a.src);
+  const pending = assets.filter((a) => shouldStore(a) && !a.storagePath && a.src);
   let done = 0;
   const updated = new Map<string, MediaAsset>();
   for (const a of pending) {
-    const blob = await (await fetch(a.src!)).blob();
-    const ext = (a.name.split(".").pop() ?? "").replace(/[^a-z0-9]/gi, "").slice(0, 5) || (a.kind === "audio" ? "mp3" : "mp4");
+    const res = await fetch(a.src!);
+    if (!res.ok) continue;
+    const blob = await res.blob();
+    const ext = (a.origin === "stock" ? (a.kind === "image" ? "jpg" : "mp4") : a.name.split(".").pop() ?? "").replace(/[^a-z0-9]/gi, "").slice(0, 5) || (a.kind === "audio" ? "mp3" : "mp4");
     const path = `${userId}/${a.id}.${ext}`;
     const { error } = await sb.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || undefined });
     if (error) throw error;
@@ -87,7 +91,7 @@ const serializableAssets = (project: Project, assets: MediaAsset[]) => {
   return assets
     .filter((a) => !a.scene && a.id !== "asset_music" && (used.has(a.id) || isFileAsset(a) || a.origin === "stock"))
     .filter((a) => !isFileAsset(a) || a.storagePath)
-    .map((a) => (isFileAsset(a) ? { ...a, src: undefined } : a));
+    .map((a) => (a.storagePath ? { ...a, src: undefined } : a));
 };
 
 export const saveCloudProject = async (id: string | null, project: Project, assets: MediaAsset[]) => {

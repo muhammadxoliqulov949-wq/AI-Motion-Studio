@@ -34,7 +34,7 @@ const analyse = async (op: EditOp, project: Project, assets: MediaAsset[]): Prom
       const r = await searchStock("videos", op.query, project.aspect);
       return { stock: r.items.slice(0, Math.max(1, Math.min(8, Math.round(op.count)))).map(stockToAsset) };
     } catch (err) {
-      return { stockError: err instanceof StockError && err.code === "no_api_key" ? "Stok video uchun serverda PEXELS_API_KEY kerak" : (err as Error).message };
+      return { stockError: err instanceof StockError && err.code === "no_api_key" ? "Stok video uchun serverda PIXABAY_API_KEY kerak" : (err as Error).message };
     }
   }
   if (op.op === "beat_sync") {

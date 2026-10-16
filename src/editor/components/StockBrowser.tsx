@@ -76,7 +76,7 @@ export function StockBrowser({ type }: { type: "videos" | "photos" }) {
         {error ? (
           <div className="flex gap-2 rounded-lg px-3 py-2 text-[11px] bg-amber-500/10 text-amber-200/90 ring-1 ring-amber-400/20 leading-relaxed">
             <TriangleAlert className="size-3.5 shrink-0 mt-0.5" />
-            {error.code === "no_api_key" ? "Stok kutubxona uchun serverda PEXELS_API_KEY kerak (pexels.com/api — bepul)." : error.text}
+            {error.code === "no_api_key" ? "Stok kutubxona uchun serverda PIXABAY_API_KEY kerak (pixabay.com/api/docs — bepul)." : error.text}
           </div>
         ) : !loading && !items.length ? (
           <Empty>Hech narsa topilmadi</Empty>
@@ -96,7 +96,7 @@ export function StockBrowser({ type }: { type: "videos" | "photos" }) {
             Yana yuklash
           </button>
         )}
-        <p className="mt-3 text-[10px] text-white/35 leading-relaxed">Pexels — tijoriy foydalanish bepul. Muallif nomi eksportdagi mualliflik ro&apos;yxatiga qo&apos;shiladi.</p>
+        <p className="mt-3 text-[10px] text-white/35 leading-relaxed">Pixabay — tijoriy foydalanish bepul, atribut shart emas. Muallif nomi baribir eksportdagi mualliflik ro&apos;yxatiga qo&apos;shiladi.</p>
       </div>
     </>
   );

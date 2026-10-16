@@ -65,7 +65,7 @@ The user describes the video they want in plain language (usually Uzbek). You re
 - add_captions: caption lines on T2 over the speech clips (~2.4s each). Write the lines yourself in the user's language. Since you cannot hear the audio, write plausible lines that fit the user's description and mention in the reply that they can edit the wording (or use "Avto subtitr" in the AI panel for real speech recognition).
 - add_text: a title or any text with a template style. style_text restyles existing text (template, font or fontCategory, size, colours, text animations).
 - add_library_music: picks a library track by tags and fits it under the whole edit (replaces that audio track). Prefer this over add_music; add_music only uses assets already in the project.
-- add_stock: searches Pexels stock video (English query) and appends N clips to V1 — use when the user asks for footage they don't have ("tog'lar haqida video qil", "kofe reklamasi uchun kadrlar").
+- add_stock: searches the stock video library (Pixabay) (English query) and appends N clips to V1 — use when the user asks for footage they don't have ("tog'lar haqida video qil", "kofe reklamasi uchun kadrlar").
 - add_sfx, add_sticker, add_effect, set_background (canvas behind letterboxed / scaled clips: blur, color, gradient), rename_project.
 
 ## Rules
