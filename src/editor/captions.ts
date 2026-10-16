@@ -2,6 +2,7 @@
  * Auto captions: extracts the audio under each speech clip, sends 16 kHz mono WAV chunks to
  * /api/transcribe and turns the timed segments into caption clips on the captions track.
  */
+import { decodeAudio as decode } from "./audio-analysis";
 import { makeTextClip, migrateProject, templatePatch } from "./ops";
 import type { Clip, MediaAsset, MediaClip, Project, TextClip } from "./types";
 import { round } from "./utils";
@@ -31,26 +32,6 @@ const encodeWav = (samples: Float32Array) => {
     view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
   }
   return new Blob([buffer], { type: "audio/wav" });
-};
-
-const decodeCache = new Map<string, Promise<AudioBuffer>>();
-
-const decode = (src: string) => {
-  let p = decodeCache.get(src);
-  if (!p) {
-    p = fetch(src)
-      .then((r) => r.arrayBuffer())
-      .then(async (buf) => {
-        const ctx = new AudioContext();
-        try {
-          return await ctx.decodeAudioData(buf);
-        } finally {
-          void ctx.close();
-        }
-      });
-    decodeCache.set(src, p);
-  }
-  return p;
 };
 
 /** Resamples [from, to) seconds of a decoded buffer to 16 kHz mono. */

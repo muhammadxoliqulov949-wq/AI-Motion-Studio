@@ -5,7 +5,7 @@ export type AssetKind = "video" | "audio" | "image";
 export type SceneId = "city" | "mountains" | "ocean" | "portrait" | "product" | "neon";
 
 /** Where an asset came from: user upload, built-in demo, or one of the libraries. */
-export type AssetOrigin = "upload" | "demo" | "music" | "sfx";
+export type AssetOrigin = "upload" | "demo" | "music" | "sfx" | "stock" | "voice";
 
 export interface MediaAsset {
   id: string;

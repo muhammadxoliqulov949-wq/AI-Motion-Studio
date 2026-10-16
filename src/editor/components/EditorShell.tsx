@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { createInitialProject, duplicateClip, insertClip, kindsForClip, removeClip, splitAt, trimToPlayhead } from "../ops";
 import { createSampleAssets, renderDemoMusic } from "../sample-media";
 import { EditorProvider, useEditor } from "../store";
+import { loadMedia } from "../media-store";
 import { loadSaved, saveProject } from "../persist";
 import type { Clip } from "../types";
 import { projectDuration, round, uid } from "../utils";
@@ -64,6 +65,8 @@ function Editor() {
     renderDemoMusic()
       .then((music) => addAssets([{ ...music, origin: "demo" }]))
       .catch(console.error);
+    // Re-attach uploaded / generated files saved in IndexedDB.
+    void loadMedia().then((media) => media.length && addAssets(media));
   }, []);
 
   // Autosave (debounced). Object URLs from uploads are not persisted.

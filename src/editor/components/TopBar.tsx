@@ -8,6 +8,7 @@ import { Logo } from "@/components/Logo";
 import { ASPECTS } from "../presets";
 import { useEditor } from "../store";
 import type { AspectRatio } from "../types";
+import { clearMedia } from "../media-store";
 import { clearSavedProject } from "../persist";
 
 const SHORTCUTS: [string, string][] = [
@@ -122,7 +123,7 @@ export function TopBar({ onExport, compact = false, saved = true }: { onExport: 
           onClick={() => {
             if (window.confirm("Joriy loyiha tozalanadi va demo loyiha ochiladi. Davom etasizmi?")) {
               clearSavedProject();
-              window.location.reload();
+              void clearMedia().finally(() => window.location.reload());
             }
           }}
         >

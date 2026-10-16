@@ -39,6 +39,7 @@ import { EMOJI_CATEGORIES, EMOJI_STICKERS, SHAPE_STICKERS } from "../catalog/sti
 import { TEXT_TEMPLATE_GROUPS, TEXT_TEMPLATES, type TextTemplateGroup } from "../catalog/text-templates";
 import { TRANSITION_DEFS, TRANSITION_GROUPS, type TransitionGroup } from "../catalog/transitions";
 import { importFile } from "../import-media";
+import { saveMedia } from "../media-store";
 import { clipsOnTrack, updateClip } from "../ops";
 import { useEditor } from "../store";
 import type { MediaAsset, TextClip } from "../types";
@@ -119,7 +120,11 @@ function MediaTab() {
     for (const file of arr) {
       try {
         const asset = await importFile(file);
-        if (asset) addAssets([{ ...asset, origin: "upload" }]);
+        if (asset) {
+          const stored = { ...asset, origin: "upload" as const };
+          addAssets([stored]);
+          void saveMedia(stored, file);
+        }
       } catch (err) {
         console.error(err);
       } finally {

@@ -12,6 +12,7 @@ import { FONTS } from "./catalog/fonts";
 import { EMOJI_STICKERS, SHAPE_STICKERS } from "./catalog/stickers";
 import { TEXT_TEMPLATES } from "./catalog/text-templates";
 import { TRANSITION_IDS } from "./catalog/transitions";
+import { applySpeechSegments, cutToBeats } from "./audio-analysis";
 import { setKeyframe } from "./keyframes";
 import { clipsOnTrack, closeGaps, insertClip, makeEffectClip, makeMediaClip, makeStickerClip, makeTextClip, migrateProject, splitClip, templatePatch } from "./ops";
 import type { Clip, Easing, KeyframeProp, MediaAsset, MediaClip, Project, TextClip } from "./types";
@@ -45,6 +46,11 @@ export const EditOpSchema = z.union([
   z.object({
     op: z.literal("remove_silences"),
     clipIds: z.array(z.string()).nullable().describe("Speech clips to tighten; null = all detected speech clips"),
+  }),
+  z.object({
+    op: z.literal("beat_sync"),
+    every: z.number().describe("Cut every N music beats: 1 = very fast, 2 = energetic (default), 4 = calm"),
+    maxSeconds: z.number().nullable().describe("Stop the montage after this many seconds; null = until the music ends"),
   }),
   z.object({
     op: z.literal("beat_cut"),
@@ -215,7 +221,17 @@ export interface AgentStep {
   warning?: boolean;
 }
 
+/** Results of real audio analysis done before the ops run (see agent-runner.ts). */
+export interface OpAnalysis {
+  /** Speech parts (source seconds) per clip id. */
+  speech?: Map<string, { start: number; end: number }[]>;
+  /** Music beat times on the timeline. */
+  beats?: number[];
+  bpm?: number;
+}
+
 interface Ctx {
+  analysis?: OpAnalysis;
   project: Project;
   assets: MediaAsset[];
   /** Library assets (music / SFX) the ops pulled in; the caller adds them to the project. */
@@ -303,6 +319,27 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
       ? mainClips(ctx.project).filter((c) => clipIds.includes(c.id))
       : speechClips(ctx).filter((c) => c.duration > 6);
     if (!talk.length) return warn(ctx, "Jimlik olib tashlash uchun nutqli klip topilmadi");
+    const speech = ctx.analysis?.speech;
+    if (speech?.size) {
+      // Real analysis: cut exactly where the audio goes quiet.
+      let p = ctx.project;
+      let removed = 0;
+      let done = 0;
+      for (const clip of talk) {
+        const segs = speech.get(clip.id);
+        const current = p.clips.find((c) => c.id === clip.id) as MediaClip | undefined;
+        if (!segs?.length || !current) continue;
+        removed += current.duration - segs.reduce((acc, x) => acc + (x.end - x.start) / current.speed, 0);
+        p = applySpeechSegments(p, current, segs);
+        done++;
+        ctx.code.push(`timeline.removeSilences("${assetName(ctx, clip)}", { detect: "rms", minPause: 0.45 })`);
+      }
+      if (done) {
+        ctx.project = p;
+        ctx.steps.push({ label: "Jimliklar olib tashlandi", detail: `Audio tahlili: ${done} ta klipdan ${round(removed, 1)} s pauza kesildi` });
+        return;
+      }
+    }
     let removed = 0;
     let p = ctx.project;
     for (const clip of talk) {
@@ -569,6 +606,24 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
     step(ctx, "Loyiha nomi", name, `project.rename(${JSON.stringify(name)})`);
   },
 
+  beat_sync: (ctx, { every, maxSeconds }) => {
+    const n = Math.round(clamp(every || 2, 1, 8));
+    let beats = ctx.analysis?.beats;
+    let detail = "";
+    if (beats?.length) {
+      detail = `${ctx.analysis?.bpm ?? "?"} BPM, har ${n} bitda kesish`;
+    } else {
+      // No decodable music: fall back to a 120 BPM grid.
+      const total = maxSeconds ?? 16;
+      beats = Array.from({ length: Math.ceil(total / 0.5) + 1 }, (_, i) => round(i * 0.5, 3));
+      detail = `Musiqa tahlil qilinmadi — 120 BPM to'r, har ${n} bitda`;
+    }
+    const before = ctx.project;
+    ctx.project = cutToBeats(ctx.project, beats, n, maxSeconds ?? undefined);
+    if (ctx.project === before) return warn(ctx, "Ritmga moslash uchun klip yoki bit yetarli emas");
+    step(ctx, "Ritmga moslab kesish", `${detail}, ${mainClips(ctx.project).length} ta kadr`, `timeline.beatSync("V1", { every: ${n} })`);
+  },
+
   add_library_music: (ctx, { tags, trackId, volume }) => {
     const track = trackId ?? "A1";
     const total = projectDuration({ ...ctx.project, clips: ctx.project.clips.filter((c) => c.trackId !== track) }) || 15;
@@ -668,8 +723,8 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
   },
 };
 
-export const applyOps = (project: Project, assets: MediaAsset[], ops: EditOp[]) => {
-  const ctx: Ctx = { project: migrateProject(project), assets, newAssets: [], steps: [], code: [] };
+export const applyOps = (project: Project, assets: MediaAsset[], ops: EditOp[], analysis?: OpAnalysis) => {
+  const ctx: Ctx = { project: migrateProject(project), assets, newAssets: [], steps: [], code: [], analysis };
   for (const op of ops) {
     try {
       (OPS[op.op] as (ctx: Ctx, op: EditOp) => void)(ctx, op);

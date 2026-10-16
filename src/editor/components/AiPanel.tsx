@@ -4,7 +4,8 @@ import { ArrowUp, Check, ChevronDown, Code2, Loader2, RotateCcw, Sparkles, Trian
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { planLocally, suggestFor, summarize } from "../ai-agent";
-import { applyOps, describeProject, type AgentStep, type EditOp } from "../edit-ops";
+import { applyOpsAsync } from "../agent-runner";
+import { describeProject, type AgentStep, type EditOp } from "../edit-ops";
 import { useEditor } from "../store";
 import type { Project } from "../types";
 import { projectDuration, round } from "../utils";
@@ -136,7 +137,8 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
       return;
     }
 
-    const result = applyOps(before, currentAssets, plan.ops);
+    if (plan.ops.some((o) => o.op === "remove_silences" || o.op === "beat_sync")) patch(aiId, { status: "thinking", text: "" });
+    const result = await applyOpsAsync(before, currentAssets, plan.ops);
     patch(aiId, { status: "working", steps: result.steps, revealed: 0, mode: plan.mode, notice: plan.notice });
     for (let i = 1; i <= result.steps.length; i++) {
       await wait(260);
