@@ -8,6 +8,7 @@ import { Logo } from "@/components/Logo";
 import { ASPECTS } from "../presets";
 import { useEditor } from "../store";
 import type { AspectRatio } from "../types";
+import { CloudMenu } from "./CloudMenu";
 import { TemplatePicker } from "./TemplatePicker";
 
 const SHORTCUTS: [string, string][] = [
@@ -125,6 +126,7 @@ export function TopBar({ onExport, compact = false, saved = true }: { onExport: 
         {!compact && "Shablonlar"}
       </button>
       <TemplatePicker open={templatesOpen} onClose={() => setTemplatesOpen(false)} />
+      <CloudMenu compact={compact} />
       <button
         onClick={onExport}
         title="Eksport"

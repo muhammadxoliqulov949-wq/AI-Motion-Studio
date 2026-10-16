@@ -43,7 +43,7 @@ import type {
   VisualClip,
 } from "../types";
 import { clamp, formatTime, round } from "../utils";
-import { BeatTool, ReplaceMedia, SilenceTool } from "./AudioTools";
+import { BeatTool, ReframeTool, ReplaceMedia, SilenceTool } from "./AudioTools";
 import { Chips, ColorRow, SearchBox, Section, Segmented, Slider, Switch } from "./ui";
 
 type SetFn = (patch: Partial<Clip>, live?: boolean) => void;
@@ -308,6 +308,7 @@ function MediaInspector({ clip, set, checkpoint, isImage }: { clip: MediaClip; s
         {tab === "basic" && (
           <>
             <ReplaceMedia clip={clip} />
+            <ReframeTool clip={clip} />
             <TransformSection clip={clip} checkpoint={checkpoint} props={["x", "y", "scale", "rotation", "opacity"]} />
             <Section title="Kadr">
               <div className="flex gap-1.5">

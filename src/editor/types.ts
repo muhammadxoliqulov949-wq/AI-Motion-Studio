@@ -31,6 +31,8 @@ export interface MediaAsset {
   /** Attribution line required by the license (e.g. CC BY). */
   credit?: string;
   license?: string;
+  /** Path in the Supabase "media" bucket once the file is uploaded to the cloud. */
+  storagePath?: string;
 }
 
 export type TrackKind = "video" | "overlay" | "text" | "sticker" | "effect" | "audio";
@@ -63,7 +65,7 @@ export interface Keyframe {
   easing: Easing;
 }
 
-export type KeyframeProp = "x" | "y" | "scale" | "rotation" | "opacity" | "volume";
+export type KeyframeProp = "x" | "y" | "scale" | "rotation" | "opacity" | "volume" | "focusX";
 
 export type Keyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
 

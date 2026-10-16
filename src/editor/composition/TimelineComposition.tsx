@@ -309,7 +309,7 @@ const ClipLayer: React.FC<{ clip: Clip; asset?: MediaAsset; track: Track; exit?:
   unit,
 }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width: frameW, height: frameH } = useVideoConfig();
   if (clip.type === "effect") return null;
   const t = frame / fps;
   const tr = transitionStyles(clip, exit, t);
@@ -397,6 +397,19 @@ const ClipLayer: React.FC<{ clip: Clip; asset?: MediaAsset; track: Track; exit?:
     return null;
   };
 
+  // Smart reframe: pan a wider source inside the frame following the focusX keyframes.
+  const srcAspect = asset.width && asset.height ? asset.width / asset.height : 0;
+  const frameAspect = frameW / frameH;
+  const pan = clip.keyframes?.focusX?.length && fit === "cover" && srcAspect > frameAspect + 0.01 ? valueAt(clip, "focusX", mediaT) : null;
+  const panned =
+    pan === null ? (
+      renderMedia(fit, false)
+    ) : (
+      <div style={{ position: "absolute", top: 0, height: "100%", width: `${(srcAspect / frameAspect) * 100}%`, left: `${-((srcAspect / frameAspect) * 100 - 100) * Math.min(1, Math.max(0, (pan - frameAspect / srcAspect / 2) / (1 - frameAspect / srcAspect)))}%` }}>
+        {renderMedia("cover", false)}
+      </div>
+    );
+
   const showBlurBg = track.kind === "video" && background.type === "blur" && (fit === "contain" || scale < 1 || x !== 0 || y !== 0);
 
   return (
@@ -407,7 +420,7 @@ const ClipLayer: React.FC<{ clip: Clip; asset?: MediaAsset; track: Track; exit?:
       {clip.chroma?.enabled && <ChromaFilter id={`ck-${clip.id}`} chroma={clip.chroma} />}
       <AbsoluteFill style={{ transform: userTransform || undefined }}>
         <AbsoluteFill style={{ clipPath, maskImage: mStyle.maskImage, WebkitMaskImage: mStyle.WebkitMaskImage, filter: filter || undefined, overflow: "hidden" }}>
-          <AbsoluteFill style={{ transform: motion || undefined }}>{renderMedia(fit, false)}</AbsoluteFill>
+          <AbsoluteFill style={{ transform: motion || undefined }}>{panned}</AbsoluteFill>
           {vignette > 0 && (
             <AbsoluteFill style={{ background: `radial-gradient(ellipse at center, transparent ${60 - vignette * 30}%, rgba(0,0,0,${0.4 + vignette * 0.5}) 100%)` }} />
           )}

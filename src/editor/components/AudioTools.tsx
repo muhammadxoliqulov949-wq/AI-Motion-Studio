@@ -4,6 +4,8 @@ import { Activity, AudioWaveform, Loader2, Scissors } from "lucide-react";
 import { useState } from "react";
 import { analyzeMusicBeats, beatsOnTimeline, cutToBeats, removeSilencesFromClip, type BeatInfo } from "../audio-analysis";
 import { updateClip } from "../ops";
+import { ASPECTS } from "../presets";
+import { applyReframe, canReframe, trackFaces } from "../reframe";
 import { useEditor } from "../store";
 import type { MediaClip } from "../types";
 import { Chips, Section, Slider } from "./ui";
@@ -151,6 +153,71 @@ export function ReplaceMedia({ clip }: { clip: MediaClip }) {
         ))}
       </div>
       <p className="text-[10px] text-white/35">Vaqt, effekt va animatsiyalar saqlanadi — faqat kadr almashadi.</p>
+    </Section>
+  );
+}
+
+/** Smart reframe: keeps the person centred when a wide clip sits in a vertical / square frame. */
+export function ReframeTool({ clip }: { clip: MediaClip }) {
+  const { project, assets, commit } = useEditor();
+  const [progress, setProgress] = useState<number | null>(null);
+  const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
+  const asset = assets.find((a) => a.id === clip.assetId);
+  if (!canReframe(asset)) return null;
+  const active = !!clip.keyframes?.focusX?.length;
+  const wide = asset!.width && asset!.height ? asset!.width / asset!.height > ASPECTS[project.aspect].width / ASPECTS[project.aspect].height + 0.01 : false;
+
+  const run = async () => {
+    setNote(null);
+    setProgress(0);
+    try {
+      const r = await trackFaces(clip, asset!, setProgress);
+      if (!r.found) {
+        setNote({ text: "Kadrlarda yuz topilmadi.", error: true });
+        return;
+      }
+      commit({ ...project, clips: project.clips.map((c) => (c.id === clip.id ? applyReframe(c, r.points) : c)) });
+      setNote({ text: `Yuz ${r.found}/${r.samples} kadrda topildi — kamera unga ergashadi.` });
+    } catch (err) {
+      setNote({ text: `Yuzni aniqlash ishlamadi: ${(err as Error).message}`, error: true });
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  return (
+    <Section title="Aqlli kadrlash (yuzni kuzatish)">
+      {!wide && <Note text="Klip kanvasdan kengroq bo'lganda ishlaydi — masalan 16:9 videoni 9:16 yoki 1:1 formatda." error />}
+      <div className="flex gap-1.5">
+        <button
+          onClick={() => void run()}
+          disabled={progress !== null || !wide}
+          className="flex-1 h-9 rounded-lg bg-cyan-400 text-black text-xs font-semibold hover:bg-cyan-300 disabled:opacity-40 inline-flex items-center justify-center gap-1.5"
+        >
+          {progress !== null ? (
+            <>
+              <Loader2 className="size-3.5 animate-spin" /> {Math.round(progress * 100)}%
+            </>
+          ) : active ? (
+            "Qayta kuzatish"
+          ) : (
+            "Yuzni kuzatish"
+          )}
+        </button>
+        {active && (
+          <button
+            onClick={() => {
+              const kf = { ...clip.keyframes };
+              delete kf.focusX;
+              commit(updateClip(project, clip.id, { keyframes: kf }));
+            }}
+            className="h-9 px-3 rounded-lg bg-white/[0.06] hover:bg-white/10 text-xs text-white/80"
+          >
+            O&apos;chirish
+          </button>
+        )}
+      </div>
+      {note && <Note {...note} />}
     </Section>
   );
 }

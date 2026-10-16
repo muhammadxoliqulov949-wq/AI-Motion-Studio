@@ -49,6 +49,7 @@ export const KEYFRAME_PROPS: { id: KeyframeProp; label: string; min: number; max
   { id: "rotation", label: "Burilish", min: -360, max: 360, step: 1, unit: "°" },
   { id: "opacity", label: "Shaffoflik", min: 0, max: 1, step: 0.01, unit: "" },
   { id: "volume", label: "Ovoz", min: 0, max: 2, step: 0.01, unit: "" },
+  { id: "focusX", label: "Kadr markazi (gorizontal)", min: 0, max: 1, step: 0.005, unit: "" },
 ];
 
 /** Base (non-keyframed) value of a property on a clip. */
@@ -56,6 +57,7 @@ export const baseValue = (clip: Clip, prop: KeyframeProp): number => {
   const c = clip as unknown as Record<string, unknown>;
   const v = c[prop];
   if (typeof v === "number") return v;
+  if (prop === "focusX") return 0.5;
   return prop === "scale" || prop === "opacity" || prop === "volume" ? 1 : 0;
 };
 
