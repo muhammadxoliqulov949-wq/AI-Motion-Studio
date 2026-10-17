@@ -9,6 +9,7 @@ import { MUSIC, musicToAsset, pickMusic, pickSfx, sfxToAsset } from "./catalog/a
 import { EFFECT_IDS, EFFECTS } from "./catalog/effects";
 import { FILTERS, FILTER_PRESETS } from "./catalog/filters";
 import { FONTS } from "./catalog/fonts";
+import { motionPreset } from "./catalog/motion-presets";
 import { EMOJI_STICKERS, SHAPE_STICKERS } from "./catalog/stickers";
 import { TEXT_TEMPLATES } from "./catalog/text-templates";
 import { TRANSITION_IDS } from "./catalog/transitions";
@@ -157,7 +158,7 @@ export const EditOpSchema = z.union([
   }),
   z.object({
     op: z.literal("add_sticker"),
-    sticker: z.string().describe("Animated emoji name (e.g. fire, red-heart, party-popper, thumbs-up, joy) or shape:<id> (arrow-right, subscribe, like, star, burst, speech, check, cross, location, bell, sparkle)"),
+    sticker: z.string().describe("Animated emoji name (e.g. fire, red-heart, party-popper, thumbs-up, joy) or shape:<id> (arrow-right, subscribe, like, star, burst, speech, check, cross, location, bell, sparkle), or an animated call-to-action motion:<id> (subscribe, like, bell, arrow-down, arrow-right, tap, swipe-up, hearts)"),
     start: z.number(),
     duration: z.number(),
     x: z.number().nullable().describe("% offset from centre, -45..45"),
@@ -679,7 +680,9 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
   },
 
   add_sticker: (ctx, { sticker, start, duration, x, y, scale }) => {
-    const id = sticker.startsWith("shape:")
+    const id = sticker.startsWith("motion:")
+      ? motionPreset(sticker.slice(7)) ? sticker : null
+      : sticker.startsWith("shape:")
       ? SHAPE_STICKERS.some((s) => `shape:${s.id}` === sticker) ? sticker : null
       : EMOJI_STICKERS.some((e) => e.name === sticker.replace(/^emoji:/, "")) ? `emoji:${sticker.replace(/^emoji:/, "")}` : null;
     if (!id) return warn(ctx, `Stiker topilmadi: ${sticker}`);

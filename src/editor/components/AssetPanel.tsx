@@ -4,6 +4,7 @@ import {
   AudioLines,
   Check,
   Clapperboard,
+  Globe,
   Loader2,
   Mic,
   Music2,
@@ -46,6 +47,7 @@ import type { MediaAsset, TextClip } from "../types";
 import { formatShort } from "../utils";
 import { useAudioPreview, useInsert, useRealPeaks } from "./assets/use-insert";
 import { AutoCaptions } from "./AutoCaptions";
+import { GiphyBrowser, IconBrowser, OnlineSounds, PopularStickers } from "./OnlineLibraries";
 import { StockBrowser } from "./StockBrowser";
 import { VoicePanel } from "./VoicePanel";
 import { DND } from "./dnd";
@@ -252,7 +254,7 @@ function MediaTile({ asset, onAdd }: { asset: MediaAsset; onAdd: () => void }) {
 // ---------------- Audio ----------------
 
 function AudioTab() {
-  const [mode, setMode] = useState<"music" | "sfx" | "voice">("music");
+  const [mode, setMode] = useState<"music" | "sfx" | "online" | "voice">("music");
   const preview = useAudioPreview();
   useEffect(() => () => preview.stop(), []);
   return (
@@ -264,12 +266,18 @@ function AudioTab() {
           options={[
             ["music", <><Music2 className="size-3" /> Musiqa</>],
             ["sfx", <><AudioLines className="size-3" /> Effektlar</>],
+            ["online", <><Globe className="size-3" /> Onlayn</>],
             ["voice", <><Mic className="size-3" /> AI ovoz</>],
           ]}
         />
       </Head>
       {mode === "music" && <MusicList />}
       {mode === "sfx" && <SfxList />}
+      {mode === "online" && (
+        <Scroll className="pt-2.5">
+          <OnlineSounds />
+        </Scroll>
+      )}
       {mode === "voice" && (
         <Scroll className="pt-3">
           <VoicePanel />
@@ -570,8 +578,17 @@ function FontRow({ family, category, cyrillic, active, onClick }: { family: stri
 
 // ---------------- Stickers ----------------
 
+const STICKER_MODES: [StickerMode, string][] = [
+  ["popular", "Mashhur"],
+  ["emoji", "Emoji"],
+  ["giphy", "GIPHY"],
+  ["icons", "Belgilar"],
+  ["shapes", "Shakllar"],
+];
+type StickerMode = "popular" | "emoji" | "giphy" | "icons" | "shapes";
+
 function StickersTab() {
-  const [mode, setMode] = useState<"emoji" | "shapes">("emoji");
+  const [mode, setMode] = useState<StickerMode>("popular");
   const [cat, setCat] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const insert = useInsert();
@@ -579,14 +596,18 @@ function StickersTab() {
   return (
     <>
       <Head>
-        <Segmented
-          value={mode}
-          onChange={setMode}
-          options={[
-            ["emoji", `Animatsion emoji · ${EMOJI_STICKERS.length}`],
-            ["shapes", `Shakllar · ${SHAPE_STICKERS.length}`],
-          ]}
-        />
+        <div className="flex gap-1 overflow-x-auto no-scrollbar -mx-0.5 px-0.5">
+          {STICKER_MODES.map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setMode(id)}
+              className={cn("shrink-0 h-7 px-3 rounded-lg text-[11.5px] font-medium transition-colors", mode === id ? "bg-white/[0.14] text-white" : "text-white/50 hover:text-white bg-white/[0.03]")}
+            >
+              {label}
+              {id === "emoji" && <span className="ml-1 text-white/35">{EMOJI_STICKERS.length}</span>}
+            </button>
+          ))}
+        </div>
         {mode === "emoji" && (
           <>
             <SearchBox value={q} onChange={setQ} placeholder="Inglizcha nom: fire, heart, laugh…" />
@@ -595,7 +616,13 @@ function StickersTab() {
         )}
       </Head>
       <Scroll className="pt-2.5">
-        {mode === "emoji" ? (
+        {mode === "popular" ? (
+          <PopularStickers />
+        ) : mode === "giphy" ? (
+          <GiphyBrowser />
+        ) : mode === "icons" ? (
+          <IconBrowser />
+        ) : mode === "emoji" ? (
           <>
             <div className="grid grid-cols-6 gap-1">
               {emojis.map((e) => (

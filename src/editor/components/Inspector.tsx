@@ -19,7 +19,8 @@ import { EFFECT_GROUPS, EFFECTS } from "../catalog/effects";
 import { DEFAULT_ADJUST, FILTER_PRESETS } from "../catalog/filters";
 import { loadFontFamily } from "../catalog/font-loader";
 import { FONTS } from "../catalog/fonts";
-import { shapeById } from "../catalog/stickers";
+import { shapeById, stickerLabel } from "../catalog/stickers";
+import { motionPreset } from "../catalog/motion-presets";
 import { TEXT_TEMPLATES } from "../catalog/text-templates";
 import { TRANSITION_DEFS } from "../catalog/transitions";
 import { clearKeyframes, KEYFRAME_PROPS, keyframeAt, removeKeyframe, setKeyframe, valueAt } from "../keyframes";
@@ -59,7 +60,7 @@ export function Inspector({ initialTab }: { initialTab?: string } = {}) {
   const asset = clip.type === "media" ? assets.find((a) => a.id === clip.assetId) : undefined;
   const kind = clip.type === "media" ? (asset?.kind === "audio" ? "Audio" : asset?.kind === "image" ? "Rasm" : "Video") : { text: "Matn", sticker: "Stiker", effect: "Effekt" }[clip.type];
   const title =
-    clip.type === "text" ? clip.text : clip.type === "sticker" ? clip.sticker.split(":")[1] : clip.type === "effect" ? EFFECTS[clip.effect]?.label : asset?.name;
+    clip.type === "text" ? clip.text : clip.type === "sticker" ? stickerLabel(clip.sticker) : clip.type === "effect" ? EFFECTS[clip.effect]?.label : asset?.name;
 
   return (
     <div className="flex flex-col min-h-full">
@@ -852,6 +853,9 @@ function FontOption({ family, active, cyrillic, onClick }: { family: string; act
 function StickerInspector({ clip, set, checkpoint, initialTab }: { clip: StickerClip; set: SetFn; checkpoint: () => void; initialTab?: string }) {
   const [tab, setTab] = useState<"basic" | "anim">(initialTab === "anim" ? "anim" : "basic");
   const shape = clip.sticker.startsWith("shape:") ? shapeById(clip.sticker.slice(6)) : null;
+  const motion = clip.sticker.startsWith("motion:") ? motionPreset(clip.sticker.slice(7)) : null;
+  // Shapes, icons and animated presets can be recoloured; emoji and GIFs keep their own colours.
+  const defaultColor = shape?.defaultColor ?? motion?.defaultColor ?? (clip.sticker.startsWith("icon:") ? "#ffffff" : null);
   return (
     <>
       <Tabs
@@ -865,9 +869,9 @@ function StickerInspector({ clip, set, checkpoint, initialTab }: { clip: Sticker
       <Body>
         {tab === "basic" && (
           <>
-            {shape && (
+            {defaultColor && (
               <Section title="Rang">
-                <ColorRow value={clip.color ?? shape.defaultColor} onChange={(c) => set({ color: c })} />
+                <ColorRow value={clip.color ?? defaultColor} onChange={(c) => set({ color: c })} />
               </Section>
             )}
             <TransformSection clip={clip} checkpoint={checkpoint} props={["x", "y", "scale", "rotation", "opacity"]} />
@@ -881,6 +885,12 @@ function StickerInspector({ clip, set, checkpoint, initialTab }: { clip: Sticker
           </>
         )}
         {tab === "anim" && <ClipAnimations clip={clip} set={set} checkpoint={checkpoint} />}
+        {clip.license && (
+          <p className="text-[10px] text-white/35 leading-relaxed">
+            Litsenziya: {clip.license}
+            {clip.credit ? ` — ${clip.credit}` : ""}
+          </p>
+        )}
       </Body>
     </>
   );

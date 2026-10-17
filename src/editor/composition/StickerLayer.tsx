@@ -1,8 +1,25 @@
 import { Lottie, type LottieAnimationData } from "@remotion/lottie";
 import React, { useEffect, useState } from "react";
-import { AbsoluteFill, continueRender, delayRender, useVideoConfig } from "remotion";
+import { AbsoluteFill, AnimatedImage, continueRender, delayRender, Img, useVideoConfig } from "remotion";
+import { isSafeSvg } from "../catalog/icons";
+import { motionPreset } from "../catalog/motion-presets";
 import { emojiByName, emojiLottieUrl, shapeById } from "../catalog/stickers";
 import type { StickerClip } from "../types";
+import { MotionSticker } from "./MotionSticker";
+
+/**
+ * GIPHY stickers / GIFs. Where the browser has ImageDecoder (Chrome, Edge, the export renderers) the
+ * GIF is decoded frame by frame, so preview and export match exactly; elsewhere (e.g. iOS Safari)
+ * the browser animates the <img> itself, which is fine for preview.
+ */
+const canDecode = typeof window !== "undefined" && "ImageDecoder" in window;
+
+const GifSticker: React.FC<{ src: string; width: number; height: number }> = ({ src, width, height }) =>
+  canDecode ? (
+    <AnimatedImage src={src} width={width} height={height} fit="contain" loopBehavior="loop" />
+  ) : (
+    <Img src={src} style={{ width, height, objectFit: "contain" }} />
+  );
 
 const lottieCache = new Map<string, Promise<LottieAnimationData>>();
 
@@ -49,6 +66,21 @@ export const StickerLayer: React.FC<{ clip: StickerClip }> = ({ clip }) => {
     content = e ? <EmojiLottie codepoint={e.codepoint} fallback={e.char} size={size} /> : null;
   } else if (kind === "char") {
     content = <div style={{ fontSize: size * 0.8, lineHeight: 1 }}>{value}</div>;
+  } else if (kind === "gif" && clip.src) {
+    // Keep the GIF's own proportions inside a box about the size of other stickers.
+    const aspect = clip.aspect ?? 1;
+    const w = aspect >= 1 ? size * 1.3 : size * 1.3 * aspect;
+    content = <GifSticker src={clip.src} width={w} height={w / aspect} />;
+  } else if (kind === "icon" && clip.src && isSafeSvg(clip.src)) {
+    content = (
+      <div
+        style={{ width: size, height: size, color: clip.color ?? "#ffffff", lineHeight: 0 }}
+        // Iconify SVGs declare width/height="1em": sizing the font scales the icon to the box.
+        dangerouslySetInnerHTML={{ __html: clip.src.replace(/swidth="[^"]*"/, ' width="100%"').replace(/sheight="[^"]*"/, ' height="100%"') }}
+      />
+    );
+  } else if (kind === "motion" && motionPreset(value)) {
+    content = <MotionSticker id={value} color={clip.color} size={size * 0.8} />;
   } else if (kind === "shape") {
     const shape = shapeById(value);
     content = shape ? (

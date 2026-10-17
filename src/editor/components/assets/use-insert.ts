@@ -5,7 +5,7 @@ import { TEXT_TEMPLATES } from "../../catalog/text-templates";
 import { computePeaks } from "../../sample-media";
 import { insertClip, kindsForClip, makeEffectClip, makeMediaClip, makeStickerClip, makeTextClip, templatePatch } from "../../ops";
 import { useEditor } from "../../store";
-import type { MediaAsset, Project, TextClip } from "../../types";
+import type { MediaAsset, Project, StickerClip, TextClip } from "../../types";
 import { projectDuration, round } from "../../utils";
 
 const peakJobs = new Set<string>();
@@ -70,8 +70,8 @@ export const useInsert = () => {
     select(clip.id);
   };
 
-  const sticker = (id: string, at?: number) => {
-    const clip = makeStickerClip(at ?? now(), id);
+  const sticker = (id: string, at?: number, patch: Partial<StickerClip> = {}) => {
+    const clip = makeStickerClip(at ?? now(), id, patch);
     commit(insertClip(project, clip, ["sticker"], "S1"));
     select(clip.id);
   };
