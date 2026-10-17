@@ -142,3 +142,38 @@ export const loadCloudProject = async (id: string) => {
   const assets = saved.assets.map((a) => (a.storagePath ? { ...a, src: urls.get(a.storagePath) } : a)).filter((a) => a.src || a.scene);
   return { project: migrateProject(saved.project), assets };
 };
+
+// ---------- Temporary chat uploads ----------
+
+const CHAT_BUCKET = "chat-temp";
+const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Copies a file attached in the AI chat to the user's temporary folder (bucket "chat-temp") and
+ * returns its storage path, or null when Supabase is not configured / the user is signed out.
+ * The editor itself works from the local copy; this keeps the attachment with the account.
+ */
+export const uploadChatAttachment = async (file: File): Promise<string | null> => {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data } = await sb.auth.getSession();
+  const userId = data.session?.user.id;
+  if (!userId) return null;
+  const ext = (file.name.split(".").pop() ?? "bin").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "bin";
+  const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await sb.storage.from(CHAT_BUCKET).upload(path, file, { contentType: file.type || undefined, upsert: false });
+  if (error) throw error;
+  return path;
+};
+
+/** Deletes the signed-in user's chat attachments older than 24 hours (best effort). */
+export const cleanupChatUploads = async () => {
+  const sb = getSupabase();
+  if (!sb) return;
+  const { data } = await sb.auth.getSession();
+  const userId = data.session?.user.id;
+  if (!userId) return;
+  const { data: files } = await sb.storage.from(CHAT_BUCKET).list(userId, { limit: 200 });
+  const old = (files ?? []).filter((f) => f.created_at && Date.now() - new Date(f.created_at).getTime() > CHAT_TTL_MS).map((f) => `${userId}/${f.name}`);
+  if (old.length) await sb.storage.from(CHAT_BUCKET).remove(old);
+};

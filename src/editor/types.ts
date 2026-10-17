@@ -33,6 +33,36 @@ export interface MediaAsset {
   license?: string;
   /** Path in the Supabase "media" bucket once the file is uploaded to the cloud. */
   storagePath?: string;
+  /** Editing style measured from this video when it was attached to the AI chat as a reference. */
+  referenceStyle?: ReferenceStyle;
+  /** Set when the file was attached in the AI chat: a style reference or material to edit. */
+  chatRole?: "reference" | "material";
+}
+
+/** Editing rhythm and look of a reference video, measured in the browser (see reference-analysis.ts). */
+export interface ReferenceStyle {
+  /** Seconds analysed (long references are sampled from the start). */
+  duration: number;
+  aspect: AspectRatio;
+  /** Shot lengths in seconds, in order. */
+  shots: number[];
+  /** How each cut enters: index i is the transition into shot i + 1. */
+  transitions: ("cut" | "fade" | "dip-black" | "flash")[];
+  avgShot: number;
+  /** Dominant colours, most common first. */
+  palette: string[];
+  /** 0..1 averages over the sampled frames. */
+  brightness: number;
+  saturation: number;
+  contrast: number;
+  /** > 0 warm, < 0 cool. */
+  warmth: number;
+  /** Closest colour preset id (catalog/filters.ts). */
+  filter: string;
+  /** Music tempo of the reference, when its audio could be analysed. */
+  bpm?: number;
+  /** Small JPEG frames (data URLs) shown to the vision model. */
+  frames: string[];
 }
 
 export type TrackKind = "video" | "overlay" | "text" | "sticker" | "effect" | "audio";

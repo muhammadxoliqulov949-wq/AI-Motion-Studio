@@ -213,3 +213,36 @@ export const runAgent = (prompt: string, project: Project, assets: MediaAsset[],
     suggestions: suggestFor(result.project),
   };
 };
+
+const STYLE_WORDS = ["shu video", "shu uslub", "uslubida", "uslubda", "namuna", "o'xshat", "kabi montaj", "like this", "reference", "videodek", "videodagidek"];
+
+/**
+ * Keyword planner aware of the selected skill and of chat attachments (offline fallback).
+ * Returns the ops, or a reply when the request cannot be planned (e.g. no reference attached).
+ */
+export const planWithSkill = (
+  prompt: string,
+  project: Project,
+  assets: MediaAsset[],
+  selectedId: string | null,
+  skill: string,
+): { ops: EditOp[]; reply?: string } => {
+  const text = normalize(prompt);
+  const reference = [...assets].reverse().find((a) => a.chatRole === "reference" && a.referenceStyle);
+  const wantsStyle = skill === "style" || has(text, STYLE_WORDS);
+  if (wantsStyle) {
+    if (!reference) {
+      return { ops: [], reply: "Namuna video topilmadi. 📎 tugmasi bilan namuna videoni biriktiring (u «Namuna» deb belgilanadi), keyin qayta yozing." };
+    }
+    const style = reference.referenceStyle!;
+    const material = assets.filter((a) => a.chatRole === "material" && (a.kind === "video" || a.kind === "image")).map((a) => a.id);
+    const ops: EditOp[] = [{ op: "match_reference", referenceAssetId: reference.id, assetIds: material.length ? material : null, seconds: null, applyLook: true, applyTransitions: true }];
+    if (style.bpm) {
+      const tags = style.bpm >= 115 ? ["electronic", "driving", "uplifting"] : style.bpm >= 90 ? ["uplifting", "bright"] : ["chill", "relaxed", "calm"];
+      ops.push({ op: "add_library_music", tags, trackId: null, volume: null });
+    }
+    return { ops };
+  }
+  const extra = skill === "dynamic" ? " tiktok dinamik musiqa whoosh" : skill === "podcast" ? " jimlik subtitr sokin musiqa" : "";
+  return { ops: planLocally(prompt + extra, project, selectedId) };
+};
