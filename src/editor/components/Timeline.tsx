@@ -54,22 +54,19 @@ import {
 import { TEXT_TEMPLATES } from "../presets";
 import { useCurrentTime, useEditor, useIsPlaying } from "../store";
 import type { Clip, KeyframeProp, MediaAsset, Track, TrackKind } from "../types";
-import { clamp, clipEnd, formatShort, projectDuration, round } from "../utils";
+import { clamp, formatShort, projectDuration, round } from "../utils";
 import { useRealPeaks } from "./assets/use-insert";
 import { DND } from "./dnd";
+import { useClipDrag } from "./use-clip-drag";
 
 const HEADER_W = 172;
-const RULER_H = 28;
-const TRACK_H: Record<TrackKind, number> = { effect: 30, sticker: 34, text: 34, overlay: 46, video: 66, audio: 46 };
+export const RULER_H = 28;
+export const TRACK_H: Record<TrackKind, number> = { effect: 30, sticker: 34, text: 34, overlay: 46, video: 66, audio: 46 };
 
 export { DND };
 
-type Drag =
-  | { kind: "move" | "trim-l" | "trim-r"; clip: Clip; x0: number; moved: boolean }
-  | { kind: "scrub" };
-
 export function Timeline({ compact = false }: { compact?: boolean }) {
-  const { project, assets, selectedId, select, commit, preview, checkpoint, undo, redo, canUndo, canRedo, seek, playhead, addAssets } = useEditor();
+  const { project, assets, selectedId, select, commit, undo, redo, canUndo, canRedo, seek, playhead, addAssets } = useEditor();
   const total = projectDuration(project);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pps, setPps] = useState(28);
@@ -79,7 +76,6 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
   const [menu, setMenu] = useState(false);
   /** Tracks the user added explicitly stay visible even while empty. */
   const [pinned, setPinned] = useState<string[]>([]);
-  const dragRef = useRef<Drag | null>(null);
   const projectRef = useRef(project);
   projectRef.current = project;
   const realPeaks = useRealPeaks();
@@ -101,109 +97,10 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
     [pps],
   );
 
-  const snapTime = useCallback(
-    (t: number, ignoreId: string) => {
-      if (!snap) return t;
-      const points = [0, playhead.getFrame() / project.fps];
-      for (const c of projectRef.current.clips) {
-        if (c.id === ignoreId) continue;
-        points.push(c.start, clipEnd(c));
-      }
-      const threshold = 8 / pps;
-      let best = t;
-      let dist = threshold;
-      for (const p of points) {
-        if (Math.abs(p - t) < dist) {
-          dist = Math.abs(p - t);
-          best = p;
-        }
-      }
-      return best;
-    },
-    [snap, pps, playhead, project.fps],
-  );
-
-  // ----- pointer drag handling -----
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      if (drag.kind === "scrub") {
-        seek(timeFromClientX(e.clientX));
-        return;
-      }
-      const dt = (e.clientX - drag.x0) / pps;
-      if (!drag.moved) {
-        if (Math.abs(e.clientX - drag.x0) < 3) return;
-        drag.moved = true;
-        checkpoint();
-      }
-      const { clip } = drag;
-      const current = projectRef.current;
-      let trackId = clip.trackId;
-      if (drag.kind === "move") {
-        // Cross-track dragging: drop onto any compatible lane under the pointer.
-        const lane = document.elementsFromPoint(e.clientX, e.clientY).find((el) => (el as HTMLElement).dataset?.trackId) as HTMLElement | undefined;
-        const target = lane && current.tracks.find((t) => t.id === lane.dataset.trackId);
-        const asset = clip.type === "media" ? assetMap.get(clip.assetId) : undefined;
-        if (target && !target.locked && kindsForClip(clip, asset).includes(target.kind)) trackId = target.id;
-      }
-      const siblings = current.clips.filter((c) => c.trackId === trackId && c.id !== clip.id);
-
-      let patch: Partial<Clip> = {};
-      if (drag.kind === "move") {
-        const raw = Math.max(0, clip.start + dt);
-        const headSnap = snapTime(raw, clip.id);
-        let start = headSnap !== raw ? headSnap : snapTime(raw + clip.duration, clip.id) - clip.duration;
-        const prevEnd = siblings.filter((c) => clipEnd(c) <= start + clip.duration / 2).reduce((m, c) => Math.max(m, clipEnd(c)), 0);
-        const nextStart = siblings.filter((c) => c.start >= start + clip.duration / 2).reduce((m, c) => Math.min(m, c.start), Infinity);
-        if (nextStart - prevEnd < clip.duration - 0.001) return; // no room on that lane
-        start = clamp(start, prevEnd, nextStart - clip.duration);
-        patch = { start: round(start, 3), trackId };
-      } else {
-        const prevEnd = siblings.filter((c) => clipEnd(c) <= clip.start + 0.001).reduce((m, c) => Math.max(m, clipEnd(c)), 0);
-        const nextStart = siblings.filter((c) => c.start >= clipEnd(clip) - 0.001).reduce((m, c) => Math.min(m, c.start), Infinity);
-        if (drag.kind === "trim-l") {
-          const minD = clip.type === "media" ? -clip.in / clip.speed : -Infinity;
-          let d = snapTime(clip.start + dt, clip.id) - clip.start;
-          d = clamp(d, Math.max(minD, prevEnd - clip.start), clip.duration - 0.2);
-          patch = {
-            start: round(clip.start + d, 3),
-            duration: round(clip.duration - d, 3),
-            ...(clip.type === "media" ? { in: round(clip.in + d * clip.speed, 3) } : {}),
-          };
-        } else {
-          const asset = clip.type === "media" ? assetMap.get(clip.assetId) : undefined;
-          const maxD = clip.type === "media" && asset && asset.kind !== "image" && !clip.reverse ? (asset.duration - clip.in) / clip.speed : Infinity;
-          let end = snapTime(clipEnd(clip) + dt, clip.id);
-          end = clamp(end, clip.start + 0.2, Math.min(nextStart, clip.start + maxD));
-          patch = { duration: round(end - clip.start, 3) };
-        }
-      }
-      preview(updateClip(current, clip.id, patch));
-    };
-    const onUp = () => {
-      dragRef.current = null;
-      document.body.style.cursor = "";
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, [pps, seek, timeFromClientX, checkpoint, preview, snapTime, assetMap]);
-
-  const startClipDrag = (e: React.PointerEvent, clip: Clip, kind: "move" | "trim-l" | "trim-r", track: Track) => {
-    e.stopPropagation();
-    select(clip.id);
-    if (track.locked) return;
-    dragRef.current = { kind, clip, x0: e.clientX, moved: false };
-    document.body.style.cursor = kind === "move" ? "grabbing" : "ew-resize";
-  };
+  const { snapTime, startClipDrag, startScrub: beginScrub } = useClipDrag({ pps, snap, assetMap, onScrub: (x) => seek(timeFromClientX(x)) });
 
   const startScrub = (e: React.PointerEvent) => {
-    dragRef.current = { kind: "scrub" };
+    beginScrub();
     seek(timeFromClientX(e.clientX));
   };
 
@@ -476,7 +373,7 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
   );
 }
 
-const TRACK_ICON: Record<TrackKind, LucideIcon> = { text: Type, overlay: Layers, video: Film, audio: AudioLines, sticker: Smile, effect: Sparkles };
+export const TRACK_ICON: Record<TrackKind, LucideIcon> = { text: Type, overlay: Layers, video: Film, audio: AudioLines, sticker: Smile, effect: Sparkles };
 
 function TrackHeader({
   track,
@@ -524,7 +421,7 @@ function TrackHeader({
   );
 }
 
-function Ruler({ pps, width, onPointerDown }: { pps: number; width: number; onPointerDown: (e: React.PointerEvent) => void }) {
+export function Ruler({ pps, width, onPointerDown }: { pps: number; width: number; onPointerDown: (e: React.PointerEvent) => void }) {
   const step = pps > 160 ? 0.5 : pps > 60 ? 1 : pps > 24 ? 2 : pps > 10 ? 5 : 10;
   const ticks = [];
   for (let t = 0; t * pps < width; t += step) ticks.push(t);
@@ -562,7 +459,7 @@ function Playhead({ pps, scrollRef }: { pps: number; scrollRef: React.RefObject<
   );
 }
 
-function ClipView({
+export function ClipView({
   clip,
   track,
   asset,
@@ -570,6 +467,9 @@ function ClipView({
   selected,
   onPointerDown,
   onDrop,
+  touch = false,
+  height,
+  onTap,
 }: {
   clip: Clip;
   track: Track;
@@ -577,11 +477,16 @@ function ClipView({
   pps: number;
   selected: boolean;
   onPointerDown: (e: React.PointerEvent, kind: "move" | "trim-l" | "trim-r") => void;
-  onDrop: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  /** Mobile: large always-visible trim handles on the selected clip, tap to select. */
+  touch?: boolean;
+  /** Lane height override (mobile uses its own sizes). */
+  height?: number;
+  onTap?: () => void;
 }) {
   const left = clip.start * pps;
   const width = Math.max(4, clip.duration * pps);
-  const h = TRACK_H[track.kind] - 6;
+  const h = (height ?? TRACK_H[track.kind]) - 6;
 
   let body: React.ReactNode;
   let tone = "";
@@ -625,8 +530,16 @@ function ClipView({
         selected ? "ring-2 ring-white z-10" : "ring-1 ring-black/40 hover:ring-white/40",
         track.locked && "cursor-not-allowed",
       )}
-      style={{ left, width, height: h }}
+      style={{ left, width, height: h, touchAction: touch && selected ? "none" : undefined }}
       onPointerDown={(e) => onPointerDown(e, "move")}
+      onClick={
+        onTap
+          ? (e) => {
+              e.stopPropagation();
+              onTap();
+            }
+          : undefined
+      }
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
     >
@@ -657,8 +570,31 @@ function ClipView({
       {kfTimes.map((t) => (
         <Diamond key={t} className="absolute bottom-0.5 size-2.5 -ml-[5px] text-cyan-200 fill-cyan-300 pointer-events-none" style={{ left: t * pps }} />
       ))}
-      <div className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-white/80 rounded-l-md" onPointerDown={(e) => onPointerDown(e, "trim-l")} />
-      <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-white/80 rounded-r-md" onPointerDown={(e) => onPointerDown(e, "trim-r")} />
+      {touch ? (
+        selected && (
+          <>
+            <TouchHandle side="l" onPointerDown={(e) => onPointerDown(e, "trim-l")} />
+            <TouchHandle side="r" onPointerDown={(e) => onPointerDown(e, "trim-r")} />
+          </>
+        )
+      ) : (
+        <>
+          <div className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-white/80 rounded-l-md" onPointerDown={(e) => onPointerDown(e, "trim-l")} />
+          <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-white/80 rounded-r-md" onPointerDown={(e) => onPointerDown(e, "trim-r")} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function TouchHandle({ side, onPointerDown }: { side: "l" | "r"; onPointerDown: (e: React.PointerEvent) => void }) {
+  return (
+    <div
+      className={cn("absolute top-0 bottom-0 w-4 bg-white grid place-items-center z-10", side === "l" ? "left-0 rounded-l-md" : "right-0 rounded-r-md")}
+      style={{ touchAction: "none" }}
+      onPointerDown={onPointerDown}
+    >
+      <div className="w-[3px] h-1/3 rounded-full bg-black/50" />
     </div>
   );
 }

@@ -208,3 +208,24 @@ body {
   border-radius: 999px;
   background: #fff;
 }
+
+/* ---------- Phones / touch screens ---------- */
+
+/* Buttons that only appear on hover (e.g. "+" on library tiles) stay visible where there is no hover. */
+@media (hover: none) {
+  [class~="group-hover:opacity-100"] {
+    opacity: 1;
+  }
+}
+
+/* Mobile editor: no pull-to-refresh / rubber-banding, no tap flash, respect the notch and home indicator. */
+.mobile-editor {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+.mobile-editor button {
+  touch-action: manipulation;
+}
