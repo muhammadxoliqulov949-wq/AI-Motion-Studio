@@ -1,14 +1,16 @@
 "use client";
 
-import { ArrowUp, Check, ChevronDown, Code2, Loader2, RotateCcw, Sparkles, TriangleAlert, Wand2, X } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Code2, Loader2, Paperclip, RotateCcw, Sparkles, TriangleAlert, Upload, Wand2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { planLocally, suggestFor, summarize } from "../ai-agent";
+import { planWithSkill, suggestFor, summarize } from "../ai-agent";
 import { applyOpsAsync } from "../agent-runner";
 import { describeProject, type AgentStep, type EditOp } from "../edit-ops";
+import { skillById, type SkillId } from "../skills";
 import { useEditor } from "../store";
 import type { Project } from "../types";
 import { projectDuration, round } from "../utils";
+import { AttachmentChips, type ChatAttachment, SkillBar, toPayload, useChatAttachments } from "./ChatAttachments";
 
 type Mode = "llm" | "local";
 
@@ -26,24 +28,41 @@ interface Message {
   mode?: Mode;
   notice?: string;
   error?: boolean;
+  attachments?: ChatAttachment[];
 }
 
 const MODEL = "gpt-5.2:low";
-
-const STARTERS = [
-  "Buni dinamik Reels qil, 15 soniya, musiqa bilan",
-  "Sinematik uslubda montaj qil, sarlavha: \"Toshkent tunlari\"",
-  "Intervyudagi jimliklarni olib tashla va subtitr qo'sh",
-  "Vintaj 90-lar uslubi ber, o'tishlar silliq bo'lsin",
-];
+/** Images sent to the vision model per message (reference frames first). */
+const MAX_IMAGES = 10;
+const SKILL_KEY = "ams-ai-skill";
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const loadSkill = (): SkillId => {
+  try {
+    return skillById(localStorage.getItem(SKILL_KEY)).id;
+  } catch {
+    return "auto";
+  }
+};
 
 export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => void }) {
   const { project, assets, selectedId, commit, addAssets } = useEditor();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [skill, setSkillState] = useState<SkillId>(loadSkill);
+  const setSkill = (s: SkillId) => {
+    setSkillState(s);
+    try {
+      localStorage.setItem(SKILL_KEY, s);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const att = useChatAttachments(skill);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(0);
   const historyRef = useRef<{ role: "user" | "assistant"; content: string }[]>([]);
@@ -60,14 +79,16 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
     setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, ...p } : m)));
 
   const send = async (raw: string) => {
-    const text = raw.trim();
-    if (!text || busy) return;
+    const attached = att.ready;
+    const text = raw.trim() || (attached.length ? (attached.some((a) => a.role === "reference") ? "Shu namunadagidek montaj qil" : "Shu fayllar bilan montaj qil") : "");
+    if (!text || busy || att.busy) return;
     setInput("");
+    att.clear();
     const userId = ++idRef.current;
     const aiId = ++idRef.current;
     setMessages((ms) => [
       ...ms,
-      { id: userId, role: "user", text },
+      { id: userId, role: "user", text, attachments: attached.length ? attached : undefined },
       { id: aiId, role: "ai", text: "", status: "thinking" },
     ]);
     setBusy(true);
@@ -95,6 +116,17 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
       onBusyChange(false);
     };
 
+    // Reference frames first, then one frame per material file, capped for the vision model.
+    let budget = MAX_IMAGES;
+    const payload = [...attached]
+      .sort((a, b) => (a.role === "reference" ? -1 : 0) - (b.role === "reference" ? -1 : 0))
+      .map((a) => {
+        const p = toPayload(a);
+        const frames = p.frames.slice(0, Math.max(0, budget));
+        budget -= frames.length;
+        return { ...p, frames };
+      });
+
     let plan: { reply: string | null; ops: EditOp[]; suggestions: string[] | null; mode: Mode; notice?: string };
     try {
       const res = await fetch("/api/edit", {
@@ -105,6 +137,8 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
           project: describeProject(before, currentAssets, sel),
           history: historyRef.current,
           model: MODEL,
+          skill,
+          ...(payload.length ? { attachments: payload } : {}),
         }),
       });
       const data = await res.json();
@@ -112,12 +146,13 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
         plan = { reply: data.reply, ops: data.ops, suggestions: data.suggestions, mode: "llm" };
       } else if (data.code === "no_api_key") {
         await wait(600);
+        const local = planWithSkill(text, before, currentAssets, sel, skill);
         plan = {
-          reply: null,
-          ops: planLocally(text, before, sel),
+          reply: local.reply ?? null,
+          ops: local.ops,
           suggestions: null,
           mode: "local",
-          notice: "OPENAI_API_KEY topilmadi — lokal (kalit so'zli) rejimda ishladim.",
+          notice: "OPENAI_API_KEY topilmadi — lokal (kalit so'zli) rejimda ishladim. Rasmlarni ko'rish uchun AI kaliti kerak.",
         };
       } else if (data.code === "rate_limited") {
         const minutes = Math.max(1, Math.ceil((Number(data.retryAfter) || 60) / 60));
@@ -148,9 +183,10 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
     if (result.newAssets.length) addAssets(result.newAssets);
     if (changed) commit(result.project);
     const reply = plan.reply ?? summarize(result.steps.filter((s) => !s.warning).length, before, result.project);
+    const attachedNote = attached.length ? ` [biriktirilgan: ${attached.map((a) => `${a.role === "reference" ? "namuna" : "material"} ${a.kind} ${a.asset?.id}`).join(", ")}]` : "";
     historyRef.current = [
       ...historyRef.current,
-      { role: "user" as const, content: text },
+      { role: "user" as const, content: text + attachedNote },
       { role: "assistant" as const, content: `${reply}\n[ops: ${plan.ops.map((o) => o.op).join(", ") || "none"}]` },
     ].slice(-12);
     patch(aiId, {
@@ -175,13 +211,43 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
             ? selected.effect
             : null;
 
+  const activeSkill = skillById(skill);
+  const hasReference = att.items.some((a) => a.role === "reference");
+
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div
+      className="relative flex flex-col h-full min-h-0"
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false);
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        setDragOver(false);
+        void att.add(e.dataTransfer.files);
+      }}
+    >
+      <SkillBar value={skill} onChange={setSkill} disabled={busy} />
+      {dragOver && (
+        <div className="absolute inset-0 z-30 m-2 rounded-2xl border-2 border-dashed border-violet-400/70 bg-violet-950/70 backdrop-blur-sm grid place-items-center pointer-events-none">
+          <div className="text-center text-violet-100">
+            <Upload className="size-6 mx-auto mb-2" />
+            <div className="text-[13px] font-semibold">Fayllarni shu yerga tashlang</div>
+            <div className="text-[11px] text-violet-200/70">Video, rasm yoki audio — AI ularni ko&apos;radi va montajda ishlatadi</div>
+          </div>
+        </div>
+      )}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4 panel-scroll">
-        <Welcome project={initialProject} onPick={send} disabled={busy} />
+        <Welcome project={initialProject} onPick={send} disabled={busy} starters={activeSkill.starters} skillLabel={activeSkill.id === "auto" ? null : `${activeSkill.emoji} ${activeSkill.label}`} />
         {messages.map((m) =>
           m.role === "user" ? (
-            <div key={m.id} className="flex justify-end">
+            <div key={m.id} className="flex flex-col items-end gap-1.5">
+              {m.attachments && <AttachmentChips items={m.attachments} />}
               <div className="max-w-[85%] rounded-2xl rounded-br-md bg-white/10 px-3.5 py-2 text-[13px] text-white leading-relaxed">
                 {m.text}
               </div>
@@ -197,6 +263,14 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
       </div>
 
       <div className="p-3 border-t border-white/[0.06]">
+        {att.items.length > 0 && (
+          <div className="mb-2 space-y-1.5">
+            <AttachmentChips items={att.items} onRemove={att.remove} onToggleRole={att.toggleRole} />
+            {skill === "style" && !hasReference && (
+              <p className="text-[10.5px] text-amber-200/80">Namuna videoni belgilang: video ostidagi «Material» yorlig&apos;iga bosing.</p>
+            )}
+          </div>
+        )}
         {selectedLabel && (
           <div className="mb-2 inline-flex items-center gap-1.5 max-w-full rounded-md bg-violet-500/10 ring-1 ring-violet-400/30 px-2 py-1 text-[11px] text-violet-200">
             <span className="shrink-0">Kontekst:</span>
@@ -214,14 +288,41 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
               }
             }}
             rows={3}
-            placeholder="Videoni qanday montaj qilay? Masalan: “TikTok uchun tez, energik, subtitrli qil”"
+            placeholder={
+              skill === "style"
+                ? "Namuna video va o'z rasmlaringizni 📎 bilan biriktiring, keyin: “Shu videodagidek montaj qil”"
+                : "Videoni qanday montaj qilay? Masalan: “TikTok uchun tez, energik, subtitrli qil”"
+            }
             className="w-full bg-transparent resize-none outline-none px-3.5 pt-3 pb-10 text-[13px] text-white placeholder:text-white/30"
           />
-          <div className="absolute bottom-2 left-3 right-2 flex items-center justify-between">
-            <span className="text-[10px] text-white/30">Enter — yuborish · Shift+Enter — yangi qator</span>
+          <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={busy}
+                className="size-8 shrink-0 grid place-items-center rounded-lg text-white/55 hover:text-white hover:bg-white/10 disabled:opacity-30"
+                title="Fayl biriktirish: video, rasm, audio (yoki chatga sudrab tashlang)"
+              >
+                <Paperclip className="size-4" />
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                accept="video/*,image/*,audio/*"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.length) void att.add(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <span className="text-[10px] text-white/30 truncate hidden sm:inline">Enter — yuborish · Shift+Enter — yangi qator</span>
+            </div>
             <button
               onClick={() => void send(input)}
-              disabled={!input.trim() || busy}
+              disabled={(!input.trim() && !att.ready.length) || busy || att.busy}
+              title={att.busy ? "Fayllar tayyorlanmoqda…" : "Yuborish"}
               className="size-8 grid place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white disabled:opacity-30 disabled:from-white/20 disabled:to-white/20 transition"
             >
               {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
@@ -233,7 +334,19 @@ export function AiPanel({ onBusyChange }: { onBusyChange: (busy: boolean) => voi
   );
 }
 
-function Welcome({ project, onPick, disabled }: { project: Project; onPick: (s: string) => void; disabled: boolean }) {
+function Welcome({
+  project,
+  onPick,
+  disabled,
+  starters,
+  skillLabel,
+}: {
+  project: Project;
+  onPick: (s: string) => void;
+  disabled: boolean;
+  starters: string[];
+  skillLabel: string | null;
+}) {
   const media = project.clips.filter((c) => c.type === "media").length;
   return (
     <div className="space-y-3">
@@ -245,12 +358,13 @@ function Welcome({ project, onPick, disabled }: { project: Project; onPick: (s: 
             {media} ta xom klip ({round(projectDuration(project), 1)}s) ko&apos;rib turibman.
           </p>
           <p className="text-white/60">
-            Qanday video kerakligini oddiy so&apos;z bilan yozing — men kesaman, tartiblayman, rang beraman, musiqa va subtitr qo&apos;shaman. Natija yoqmasa, nimani o&apos;zgartirishni ayting.
+            Qanday video kerakligini oddiy so&apos;z bilan yozing — men kesaman, tartiblayman, rang beraman, musiqa va subtitr qo&apos;shaman. 📎 bilan video, rasm yoki audio biriktirsangiz, ularni ko&apos;rib montajda ishlataman yoki namunadagidek terib beraman.
           </p>
+          {skillLabel && <p className="text-[12px] text-violet-200/80">Faol ko&apos;nikma: {skillLabel}</p>}
         </div>
       </div>
       <div className="grid gap-1.5 pl-9">
-        {STARTERS.map((s) => (
+        {starters.map((s) => (
           <button
             key={s}
             disabled={disabled}

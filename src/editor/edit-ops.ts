@@ -15,6 +15,7 @@ import { TEXT_TEMPLATES } from "./catalog/text-templates";
 import { TRANSITION_IDS } from "./catalog/transitions";
 import { applySpeechSegments, cutToBeats } from "./audio-analysis";
 import { setKeyframe } from "./keyframes";
+import { describeReference } from "./reference-analysis";
 import { clipsOnTrack, closeGaps, insertClip, makeEffectClip, makeMediaClip, makeStickerClip, makeTextClip, migrateProject, splitClip, templatePatch } from "./ops";
 import type { Clip, Easing, KeyframeProp, MediaAsset, MediaClip, Project, TextClip } from "./types";
 import { clamp, clipEnd, projectDuration, round, uid } from "./utils";
@@ -201,6 +202,17 @@ export const EditOpSchema = z.union([
     clipId: z.string(),
     prop: KF_PROP,
     keyframes: z.array(z.object({ t: z.number().describe("Seconds from the clip start"), value: z.number(), easing: EASING })),
+  }),
+  z.object({
+    op: z.literal("match_reference"),
+    referenceAssetId: z.string().describe("Asset id of the attached reference video (its note starts with REFERENCE)"),
+    assetIds: z
+      .array(z.string())
+      .nullable()
+      .describe("User photos / videos to arrange in the reference rhythm, in this order; null = the media the user attached as material, else the current V1 footage"),
+    seconds: z.number().nullable().describe("Scale the reference rhythm to this total length; null = same length as the reference"),
+    applyLook: z.boolean().describe("Also copy the reference aspect ratio and colour look (closest filter)"),
+    applyTransitions: z.boolean().describe("Copy the reference's transition type at every cut"),
   }),
   z.object({
     op: z.literal("set_background"),
@@ -744,6 +756,57 @@ const OPS: { [K in EditOp["op"]]: (ctx: Ctx, op: Extract<EditOp, { op: K }>) => 
     step(ctx, "Keyframe", `${assetName(ctx, clip)}: ${prop} × ${keyframes.length}`, `clip("${clipId}").keyframes("${prop}", ${JSON.stringify(keyframes)})`);
   },
 
+  match_reference: (ctx, { referenceAssetId, assetIds, seconds, applyLook, applyTransitions }) => {
+    const ref = ctx.assets.find((a) => a.id === referenceAssetId);
+    const style = ref?.referenceStyle;
+    if (!ref || !style) return warn(ctx, "Namuna video tahlili topilmadi — videoni chatga qayta biriktiring");
+    const visual = (a: MediaAsset | undefined): a is MediaAsset => !!a && a.id !== ref.id && (a.kind === "video" || a.kind === "image") && (!!a.src || !!a.scene);
+    let pool = (assetIds ?? []).map((id) => ctx.assets.find((a) => a.id === id)).filter(visual);
+    if (!pool.length) pool = ctx.assets.filter((a) => a.chatRole === "material").filter(visual);
+    if (!pool.length) pool = [...new Set(mainClips(ctx.project).map((c) => c.assetId))].map((id) => ctx.assets.find((a) => a.id === id)).filter(visual);
+    if (!pool.length) return warn(ctx, "Namunadagidek terish uchun rasm yoki video yo'q — ularni ham chatga biriktiring");
+
+    const total = style.shots.reduce((s, x) => s + x, 0) || 1;
+    const scale = seconds ? clamp(seconds, 2, 180) / total : 1;
+    const cursor = new Map<string, number>();
+    const TRANSITION: Record<string, string> = { cut: "none", fade: "dissolve", "dip-black": "dip-black", flash: "flash" };
+    const fast = style.avgShot < 1.3;
+    const clips = style.shots.map((shot, i) => {
+      const asset = pool[i % pool.length];
+      const len = round(Math.max(0.3, shot * scale), 3);
+      let clipIn = 0;
+      let speed = 1;
+      if (asset.kind === "video") {
+        // Step through the source so a reused clip shows a new moment each time.
+        const used = cursor.get(asset.id) ?? 0;
+        const room = Math.max(0, asset.duration - len);
+        clipIn = room > 0 ? used % room : 0;
+        cursor.set(asset.id, used + len + 0.7);
+        if (asset.duration < len) speed = Math.max(0.25, round(asset.duration / len, 3));
+      }
+      const transition = i > 0 && applyTransitions ? TRANSITION[style.transitions[i - 1] ?? "cut"] ?? "none" : "none";
+      return makeMediaClip(asset, "V1", 0, {
+        duration: len,
+        in: round(clipIn, 3),
+        speed,
+        transitionIn: transition,
+        transitionDuration: transition === "flash" ? 0.2 : Math.min(0.5, len / 3),
+        motion: fast ? (i % 2 ? "punch-in" : "drift") : "ken-burns",
+      });
+    });
+    ctx.project = packTrack(ctx.project, "V1", clips);
+    if (applyLook) {
+      const filter = FILTER_PRESETS[style.filter] ? style.filter : ctx.project.grade.filter;
+      ctx.project = { ...ctx.project, aspect: style.aspect, grade: { ...ctx.project.grade, filter } };
+    }
+    step(
+      ctx,
+      "Namuna uslubida terildi",
+      `${pool.length} ta materialdan ${clips.length} ta kadr, o'rtacha ${round(style.avgShot * scale, 2)} s${applyLook ? `, ${style.aspect}, rang "${FILTERS[style.filter]?.label ?? style.filter}"` : ""}${applyTransitions ? ", o'tishlar namunadagidek" : ""}`,
+      `timeline.matchReference("${ref.id}", { shots: ${clips.length}, scale: ${round(scale, 2)} })`,
+    );
+  },
+
   set_background: (ctx, { type, color, blur }) => {
     const bg = ctx.project.background ?? { type: "color" as const, color: "#000000", blur: 40 };
     ctx.project = { ...ctx.project, background: { ...bg, type, color: color ?? bg.color, blur: blur ?? bg.blur } };
@@ -825,7 +888,11 @@ export const describeProject = (project: Project, assets: MediaAsset[], selected
     name: a.name,
     kind: a.kind,
     duration: round(a.duration, 2),
-    note:
+    note: a.referenceStyle
+      ? `REFERENCE video attached to the chat — copy its style, do not put it on the timeline. ${describeReference(a.referenceStyle)}`
+      : a.chatRole === "material"
+        ? `user attached this ${a.kind} in the chat as material to edit`
+        :
       SCENE_NOTES[a.id] ??
       (a.origin === "music" ? "library music track" : a.id === "asset_music" ? "demo lo-fi beat" : isSpeechAsset(a) ? "user-uploaded footage, may contain speech" : `user-uploaded ${a.kind}`),
   })),

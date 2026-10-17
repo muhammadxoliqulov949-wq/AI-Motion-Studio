@@ -5,10 +5,12 @@ import { FILTER_PRESETS } from "@/editor/catalog/filters";
 import { FONTS } from "@/editor/catalog/fonts";
 import { TEXT_TEMPLATES } from "@/editor/catalog/text-templates";
 import { TRANSITION_IDS } from "@/editor/catalog/transitions";
-import { AgentResponseSchema, type ProjectDescription } from "@/editor/edit-ops";
+import { EditOpSchema, type ProjectDescription } from "@/editor/edit-ops";
+import { skillById } from "@/editor/skills";
 import { rateLimit, rateLimitedResponse } from "@/lib/rate-limit";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
+import { z } from "zod";
 
 const keys = (o: object, prefix = "") => Object.keys(o).filter((k) => k.startsWith(prefix)).join(", ");
 const LIB = {
@@ -35,7 +37,8 @@ The user describes the video they want in plain language (usually Uzbek). You re
 ## Timeline conventions
 - Times are in seconds on the timeline. A media clip plays its asset from \`sourceIn\` at \`speed\`.
 - Tracks: V1 = main video (the story), V2+ = overlay video, T1 = titles/text, T2 = captions, S1 = stickers, FX1 = video effects, A1 = music, A2 = sound effects. More tracks of each kind may exist.
-- Assets carry a \`note\`. You cannot see frames or hear audio — rely on names and notes only.
+- Assets carry a \`note\`. You cannot hear audio. You only see pictures when the user attaches files in the chat: frames of attached videos and attached photos come with the request (each labelled with its asset id). Otherwise rely on names and notes.
+- Files attached in the chat are already in the project as assets: material to edit (note "attached … as material") or a style reference (note starts with REFERENCE, with the measured shot rhythm, transitions, colour look and tempo).
 
 ## Built-in libraries (use them — the user expects CapCut-level variety)
 - Music (${LIB.music} royalty-free tracks, Kevin MacLeod CC BY 4.0). add_library_music picks one by tags. Genre tags: ${LIB.genres}. Mood tags: ${LIB.moods}.
@@ -66,6 +69,7 @@ The user describes the video they want in plain language (usually Uzbek). You re
 - add_text: a title or any text with a template style. style_text restyles existing text (template, font or fontCategory, size, colours, text animations).
 - add_library_music: picks a library track by tags and fits it under the whole edit (replaces that audio track). Prefer this over add_music; add_music only uses assets already in the project.
 - add_stock: searches the stock video library (Pixabay) (English query) and appends N clips to V1 — use when the user asks for footage they don't have ("tog'lar haqida video qil", "kofe reklamasi uchun kadrlar").
+- match_reference: rebuilds V1 from the user's photos/videos on the REFERENCE video's exact shot lengths and transition types and (applyLook) copies its aspect ratio and colour look. Use it whenever the user says "shu videodek / shu uslubda / like this video" and a REFERENCE asset exists; follow it with text/caption styling that matches the reference frames.
 - add_sfx, add_sticker, add_effect, set_background (canvas behind letterboxed / scaled clips: blur, color, gradient), rename_project.
 
 ## Rules
@@ -78,14 +82,30 @@ The user describes the video they want in plain language (usually Uzbek). You re
 - If the message is not an editing request, answer briefly and return an empty ops list.
 - reply: 1–3 friendly sentences in the user's language saying what you did and why. Mention the music track by name when you add one. suggestions: 2–4 short next requests in the user's language.`;
 
+interface Attachment {
+  assetId: string;
+  name: string;
+  kind: "video" | "image" | "audio";
+  role: "reference" | "material";
+  /** JPEG/PNG/WebP data URLs (video frames or the photo itself). */
+  frames: string[];
+}
+
 interface EditRequest {
   prompt: string;
   project: ProjectDescription;
   history?: { role: "user" | "assistant"; content: string }[];
   model?: string;
+  skill?: string;
+  attachments?: Attachment[];
 }
 
 const MAX_BODY = 300_000;
+/** With images attached (≤ 10 small JPEGs). Vercel's request limit is 4.5 MB. */
+const MAX_BODY_WITH_IMAGES = 3_000_000;
+const MAX_IMAGES = 10;
+const MAX_IMAGE_CHARS = 250_000;
+const DATA_URL = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/;
 const MAX_PROMPT = 2_000;
 const MAX_HISTORY = 8;
 const MAX_HISTORY_MESSAGE = 4_000;
@@ -108,7 +128,7 @@ export async function POST(req: Request) {
   }
 
   const raw = await req.text();
-  if (raw.length > MAX_BODY) {
+  if (raw.length > MAX_BODY_WITH_IMAGES || (raw.length > MAX_BODY && !raw.includes('"attachments"'))) {
     return Response.json({ error: "So'rov juda katta", code: "too_large" }, { status: 413 });
   }
 
@@ -119,6 +139,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Noto'g'ri JSON", code: "bad_request" }, { status: 400 });
   }
   const { prompt, project, history = [], model = "gpt-5.2:low" } = body;
+  const skill = skillById(body.skill);
   if (typeof prompt !== "string" || !prompt.trim() || !project) {
     return Response.json({ error: "prompt va project kerak", code: "bad_request" }, { status: 400 });
   }
@@ -136,26 +157,56 @@ export async function POST(req: Request) {
     .filter((m) => (m?.role === "user" || m?.role === "assistant") && typeof m.content === "string")
     .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_HISTORY_MESSAGE) }));
 
+  // Attached files: a short text index plus the images themselves (validated, capped).
+  const attachments = (Array.isArray(body.attachments) ? body.attachments : []).slice(0, 8);
+  const images: { type: "image"; image: string; mediaType: string }[] = [];
+  const index: string[] = [];
+  for (const a of attachments) {
+    if (typeof a?.assetId !== "string" || typeof a.name !== "string") continue;
+    const before = images.length;
+    for (const f of Array.isArray(a.frames) ? a.frames : []) {
+      if (images.length >= MAX_IMAGES || typeof f !== "string" || f.length > MAX_IMAGE_CHARS) break;
+      const m = f.match(DATA_URL);
+      if (m) images.push({ type: "image", image: m[2], mediaType: m[1] });
+    }
+    const shown = images.length - before;
+    const role = a.role === "reference" ? "REFERENCE" : "material";
+    const pics = shown ? `: ${shown} image${shown > 1 ? "s" : ""} below${a.kind === "video" ? " (frames in order)" : ""}` : "";
+    index.push(`- ${role} ${a.kind} "${a.name.slice(0, 80)}" (asset id ${a.assetId})${pics}`);
+  }
+
   const [modelName, reasoningEffort] = model.split(":");
   const openai = createOpenAI({ apiKey });
+
+  // A skill narrows the ops the model may emit and adds its own instructions.
+  const allowed = skill.ops;
+  const options = allowed ? EditOpSchema.options.filter((o) => allowed.includes(o.shape.op.value)) : EditOpSchema.options;
+  const opsSchema = options.length > 1 ? (z.union(options as unknown as [(typeof options)[number], (typeof options)[number]]) as unknown as typeof EditOpSchema) : EditOpSchema;
+  const schema = z.object({
+    reply: z.string().describe("Short friendly answer in the user's language explaining what you changed and why"),
+    ops: z.array(opsSchema),
+    suggestions: z.array(z.string()).describe("2–4 short follow-up requests the user might send next, in their language"),
+  });
+  const attachedNote = index.length ? `\nAttached in this message:\n${index.join("\n")}\n` : "";
+  const userText = `Current timeline:\n\`\`\`json\n${JSON.stringify(project)}\n\`\`\`\n${attachedNote}\nRequest: ${prompt}`;
 
   try {
     const result = await generateObject({
       model: openai(modelName),
-      system: SYSTEM_PROMPT,
-      schema: AgentResponseSchema,
+      system: skill.prompt ? `${SYSTEM_PROMPT}\n\n${skill.prompt}` : SYSTEM_PROMPT,
+      schema,
       messages: [
         ...safeHistory,
         {
           role: "user" as const,
-          content: `Current timeline:\n\`\`\`json\n${JSON.stringify(project)}\n\`\`\`\n\nRequest: ${prompt}`,
+          content: images.length ? [{ type: "text" as const, text: userText }, ...images] : userText,
         },
       ],
       ...(reasoningEffort && {
         providerOptions: { openai: { reasoningEffort } },
       }),
     });
-    return Response.json({ ...result.object, model: modelName });
+    return Response.json({ ...result.object, model: modelName, skill: skill.id });
   } catch (err) {
     console.error("AI edit failed:", err);
     return Response.json(
