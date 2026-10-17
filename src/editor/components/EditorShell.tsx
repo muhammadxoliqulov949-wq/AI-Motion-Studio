@@ -15,6 +15,7 @@ import { AssetPanel, type AssetTab } from "./AssetPanel";
 import { CodeView } from "./CodeView";
 import { ExportDialog } from "./ExportDialog";
 import { Inspector } from "./Inspector";
+import { MobileEditor } from "./MobileEditor";
 import { PreviewPanel } from "./PreviewPanel";
 import { Timeline } from "./Timeline";
 import { TopBar } from "./TopBar";
@@ -84,7 +85,7 @@ function Editor() {
 
   useShortcuts();
 
-  const tabs: SideTab[] = desktop ? ["inspector", "ai", "code"] : ["ai", "media", "inspector", "code"];
+  const tabs: SideTab[] = ["inspector", "ai", "code"];
 
   const tabBar = (
     <div className="h-10 shrink-0 flex items-end gap-1 px-2 border-b border-white/[0.06] overflow-x-auto no-scrollbar">
@@ -122,24 +123,8 @@ function Editor() {
     </div>
   );
 
-  if (!desktop) {
-    return (
-      <div className="h-dvh w-screen flex flex-col bg-[#0a0a0c] text-white overflow-hidden">
-        <TopBar onExport={() => setExportOpen(true)} compact saved={saved} />
-        <div className="h-[30vh] min-h-[190px] shrink-0">
-          <PreviewPanel aiBusy={aiBusy} compact />
-        </div>
-        <div className="flex-1 min-h-0 flex flex-col border-t border-white/[0.06] bg-[#111115]">
-          {tabBar}
-          {tabContent}
-        </div>
-        <section className="h-[220px] shrink-0 border-t border-white/[0.06] bg-[#0b0b0e]">
-          <Timeline compact />
-        </section>
-        <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
-      </div>
-    );
-  }
+  // Phones and small tablets get the CapCut-mobile editor; desktop keeps the three-panel layout below.
+  if (!desktop) return <MobileEditor saved={saved} aiBusy={aiBusy} onAiBusyChange={setAiBusy} />;
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#0a0a0c] text-white overflow-hidden">

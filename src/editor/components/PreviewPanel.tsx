@@ -19,7 +19,7 @@ import { setKeyframe, valueAt } from "../keyframes";
 import type { Clip, KeyframeProp } from "../types";
 import { clamp, formatTime, projectDuration, round } from "../utils";
 
-export function PreviewPanel({ aiBusy, compact = false }: { aiBusy: boolean; compact?: boolean }) {
+export function PreviewPanel({ aiBusy, compact = false, hideTransport = false }: { aiBusy: boolean; compact?: boolean; hideTransport?: boolean }) {
   const { project, assets, playerRef, playhead } = useEditor();
   const { width, height } = ASPECTS[project.aspect];
   const total = projectDuration(project);
@@ -85,7 +85,7 @@ export function PreviewPanel({ aiBusy, compact = false }: { aiBusy: boolean; com
               compositionHeight={height}
               style={{ width: "100%", height: "100%" }}
               clickToPlay
-              doubleClickToFullscreen
+              doubleClickToFullscreen={!hideTransport}
               acknowledgeRemotionLicense
             />
             <DirectManipulation width={size.w} height={size.h} />
@@ -97,7 +97,7 @@ export function PreviewPanel({ aiBusy, compact = false }: { aiBusy: boolean; com
           </div>
         )}
       </div>
-      <Transport total={total} compact={compact} />
+      {!hideTransport && <Transport total={total} compact={compact} />}
     </div>
   );
 }
@@ -153,12 +153,17 @@ function Transport({ total, compact }: { total: number; compact: boolean }) {
   );
 }
 
-/** Drag the selected text / sticker / overlay directly on the preview (CapCut-style); wheel scales it. */
+/**
+ * Drag the selected text / sticker / overlay directly on the preview (CapCut-style).
+ * Mouse: drag to move, wheel to scale. Touch: one finger moves, two fingers pinch-scale and rotate.
+ */
 function DirectManipulation({ width, height }: { width: number; height: number }) {
   const { project, selectedId, preview, commit, checkpoint, togglePlay } = useEditor();
   const time = useCurrentTime();
   const clip = project.clips.find((c) => c.id === selectedId);
   const drag = useRef<{ x0: number; y0: number; bx: number; by: number; moved: boolean } | null>(null);
+  const pinch = useRef<{ dist: number; angle: number; sc: number; rot: number } | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
   if (!clip || clip.type === "effect") return null;
   if (clip.type === "media" && project.tracks.find((tr) => tr.id === clip.trackId)?.kind === "audio") return null;
   const t = time - clip.start;
@@ -174,15 +179,56 @@ function DirectManipulation({ width, height }: { width: number; height: number }
     else commit(p);
   };
 
+  const twoFinger = () => {
+    const [a, b] = [...pointers.current.values()];
+    return { dist: Math.hypot(b.x - a.x, b.y - a.y), angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI };
+  };
+  const startDrag = (x: number, y: number, moved: boolean) => {
+    drag.current = { x0: x, y0: y, bx: valueAt(clip, "x", t), by: valueAt(clip, "y", t), moved };
+  };
+
+  const release = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (pinch.current) {
+      if (pointers.current.size < 2) {
+        pinch.current = null;
+        // Continue as a one-finger move from where the remaining finger is, without a jump.
+        const rest = [...pointers.current.values()][0];
+        if (rest) startDrag(rest.x, rest.y, true);
+        else drag.current = null;
+      }
+      return;
+    }
+    const d = drag.current;
+    drag.current = null;
+    if (d && !d.moved && e.type === "pointerup") togglePlay();
+  };
+
   return (
     <div
-      className="absolute inset-0 cursor-move"
+      className="absolute inset-0 cursor-move touch-none"
       title="Sudrab joylashtiring, g'ildirak bilan masshtab"
       onPointerDown={(e) => {
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        drag.current = { x0: e.clientX, y0: e.clientY, bx: valueAt(clip, "x", t), by: valueAt(clip, "y", t), moved: false };
+        pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.current.size === 1) {
+          startDrag(e.clientX, e.clientY, false);
+        } else if (pointers.current.size === 2) {
+          if (!drag.current?.moved) checkpoint();
+          drag.current = null;
+          const g = twoFinger();
+          pinch.current = { ...g, sc: valueAt(clip, "scale", t), rot: valueAt(clip, "rotation", t) };
+        }
       }}
       onPointerMove={(e) => {
+        if (!pointers.current.has(e.pointerId)) return;
+        pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        const pc = pinch.current;
+        if (pc && pointers.current.size >= 2) {
+          const g = twoFinger();
+          write({ scale: round(clamp(pc.sc * (g.dist / pc.dist), 0.1, 6), 3), rotation: round(pc.rot + g.angle - pc.angle, 1) }, true);
+          return;
+        }
         const d = drag.current;
         if (!d) return;
         const dx = e.clientX - d.x0;
@@ -194,11 +240,8 @@ function DirectManipulation({ width, height }: { width: number; height: number }
         }
         write({ x: round(clamp(d.bx + (dx / width) * 100, -150, 150), 2), y: round(clamp(d.by + (dy / height) * 100, -150, 150), 2) }, true);
       }}
-      onPointerUp={() => {
-        const d = drag.current;
-        drag.current = null;
-        if (d && !d.moved) togglePlay();
-      }}
+      onPointerUp={release}
+      onPointerCancel={release}
       onWheel={(e) => {
         const sc = valueAt(clip, "scale", t);
         checkpoint();

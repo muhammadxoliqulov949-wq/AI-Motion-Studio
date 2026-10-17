@@ -48,7 +48,8 @@ import { Chips, ColorRow, SearchBox, Section, Segmented, Slider, Switch } from "
 
 type SetFn = (patch: Partial<Clip>, live?: boolean) => void;
 
-export function Inspector() {
+/** `initialTab` opens a clip's tab directly (used by the mobile toolbar: "speed", "audio", "anim", …). */
+export function Inspector({ initialTab }: { initialTab?: string } = {}) {
   const { project, selectedId, assets, commit, preview, checkpoint, select } = useEditor();
   const clip = project.clips.find((c) => c.id === selectedId);
   if (!clip) return <ProjectSettings />;
@@ -94,9 +95,9 @@ export function Inspector() {
         </div>
       </div>
       {clip.type === "media" && asset?.kind === "audio" && <AudioInspector clip={clip} set={set} checkpoint={checkpoint} credit={asset.credit} license={asset.license} origin={asset.origin} />}
-      {clip.type === "media" && asset?.kind !== "audio" && <MediaInspector clip={clip} set={set} checkpoint={checkpoint} isImage={asset?.kind === "image"} />}
-      {clip.type === "text" && <TextInspector clip={clip} set={set} checkpoint={checkpoint} />}
-      {clip.type === "sticker" && <StickerInspector clip={clip} set={set} checkpoint={checkpoint} />}
+      {clip.type === "media" && asset?.kind !== "audio" && <MediaInspector clip={clip} set={set} checkpoint={checkpoint} isImage={asset?.kind === "image"} initialTab={initialTab} />}
+      {clip.type === "text" && <TextInspector clip={clip} set={set} checkpoint={checkpoint} initialTab={initialTab} />}
+      {clip.type === "sticker" && <StickerInspector clip={clip} set={set} checkpoint={checkpoint} initialTab={initialTab} />}
       {clip.type === "effect" && <EffectInspector clip={clip} set={set} checkpoint={checkpoint} />}
     </div>
   );
@@ -289,8 +290,8 @@ function TransitionSection({ clip, set, checkpoint }: { clip: Clip; set: SetFn; 
 
 type MediaTab = "basic" | "anim" | "speed" | "adjust" | "mask" | "audio";
 
-function MediaInspector({ clip, set, checkpoint, isImage }: { clip: MediaClip; set: SetFn; checkpoint: () => void; isImage: boolean }) {
-  const [tab, setTab] = useState<MediaTab>("basic");
+function MediaInspector({ clip, set, checkpoint, isImage, initialTab }: { clip: MediaClip; set: SetFn; checkpoint: () => void; isImage: boolean; initialTab?: string }) {
+  const [tab, setTab] = useState<MediaTab>(() => (initialTab && ["basic", "anim", "adjust", "mask", ...(isImage ? [] : ["speed", "audio"])].includes(initialTab) ? (initialTab as MediaTab) : "basic"));
   const { project, commit, preview } = useEditor();
   const tabs: [MediaTab, string][] = [
     ["basic", "Asosiy"],
@@ -617,8 +618,8 @@ function ChromaSection({ chroma, onChange, checkpoint }: { chroma: ChromaKey | u
 
 type TextTab = "text" | "style" | "anim" | "transform";
 
-function TextInspector({ clip, set, checkpoint }: { clip: TextClip; set: SetFn; checkpoint: () => void }) {
-  const [tab, setTab] = useState<TextTab>("text");
+function TextInspector({ clip, set, checkpoint, initialTab }: { clip: TextClip; set: SetFn; checkpoint: () => void; initialTab?: string }) {
+  const [tab, setTab] = useState<TextTab>(() => (initialTab && ["text", "style", "anim", "transform"].includes(initialTab) ? (initialTab as TextTab) : "text"));
   return (
     <>
       <Tabs
@@ -824,8 +825,8 @@ function FontOption({ family, active, cyrillic, onClick }: { family: string; act
 
 // ---------- Sticker / effect ----------
 
-function StickerInspector({ clip, set, checkpoint }: { clip: StickerClip; set: SetFn; checkpoint: () => void }) {
-  const [tab, setTab] = useState<"basic" | "anim">("basic");
+function StickerInspector({ clip, set, checkpoint, initialTab }: { clip: StickerClip; set: SetFn; checkpoint: () => void; initialTab?: string }) {
+  const [tab, setTab] = useState<"basic" | "anim">(initialTab === "anim" ? "anim" : "basic");
   const shape = clip.sticker.startsWith("shape:") ? shapeById(clip.sticker.slice(6)) : null;
   return (
     <>
