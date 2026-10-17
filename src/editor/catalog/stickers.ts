@@ -3,6 +3,7 @@
  * @remotion/animated-emoji (emoji.json) — plus vector shapes/labels drawn in code.
  */
 import emojiData from "./emoji.json";
+import { motionPreset } from "./motion-presets";
 
 export const NOTO_LICENSE = "Noto Animated Emoji — Google, CC BY 4.0";
 
@@ -78,3 +79,14 @@ export const SHAPE_STICKERS: ShapeSticker[] = [
 ];
 
 export const shapeById = (id: string) => SHAPE_STICKERS.find((s) => s.id === id);
+
+/** Human label for any sticker id (timeline clip, inspector title). */
+export const stickerLabel = (sticker: string) => {
+  const [k, v = ""] = sticker.split(/:(.+)/);
+  if (k === "emoji") return `${emojiByName(v)?.char ?? "🙂"} ${v}`;
+  if (k === "shape") return `◆ ${shapeById(v)?.label ?? v}`;
+  if (k === "motion") return `✦ ${motionPreset(v)?.label ?? v}`;
+  if (k === "gif") return "GIF · GIPHY";
+  if (k === "icon") return `◇ ${v.split(":")[1] ?? v}`;
+  return v || sticker;
+};

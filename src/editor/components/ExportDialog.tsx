@@ -61,6 +61,7 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
   const credits = useMemo(() => {
     const used = new Set(project.clips.filter((c) => c.type === "media").map((c) => (c as { assetId: string }).assetId));
     const lines = assets.filter((a) => used.has(a.id) && a.credit).map((a) => a.credit!);
+    for (const c of project.clips) if (c.type === "sticker" && c.credit) lines.push(c.credit);
     if (project.clips.some((c) => c.type === "sticker" && c.sticker.startsWith("emoji:"))) lines.push(NOTO_LICENSE);
     return [...new Set(lines)];
   }, [project.clips, assets]);

@@ -32,7 +32,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { cn } from "@/lib/utils";
 import { EFFECTS } from "../catalog/effects";
 import { FILTERS } from "../catalog/filters";
-import { emojiByName, shapeById } from "../catalog/stickers";
+import { stickerLabel } from "../catalog/stickers";
 import { keyframeTimes } from "../keyframes";
 import {
   addTrack,
@@ -495,8 +495,7 @@ export function ClipView({
       </div>
     );
   } else if (clip.type === "sticker") {
-    const [k, v] = clip.sticker.split(/:(.+)/);
-    const label = k === "emoji" ? `${emojiByName(v)?.char ?? "🙂"} ${v}` : k === "shape" ? `◆ ${shapeById(v)?.label ?? v}` : v;
+    const label = stickerLabel(clip.sticker);
     tone = "bg-gradient-to-r from-pink-500/85 to-rose-500/80 text-white";
     body = <div className="flex items-center px-2 h-full text-[11px] font-medium truncate">{label}</div>;
   } else if (clip.type === "effect") {

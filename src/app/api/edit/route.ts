@@ -47,7 +47,7 @@ The user describes the video they want in plain language (usually Uzbek). You re
 - Transitions: ${LIB.transitions}.
 - Colour filters: ${LIB.filters}.
 - Video effects (add_effect, on FX track, affect everything below): ${LIB.effects}.
-- Stickers: animated emoji by name (fire, red-heart, party-popper, thumbs-up, joy, rofl, star-struck, clap, rocket, sparkles, hundred is "100", mind-blown, money-face, eyes, wave, folded-hands, check-mark, cross-mark…) or shapes shape:arrow-right, shape:arrow-curved, shape:subscribe, shape:like, shape:bell, shape:star, shape:heart, shape:burst, shape:speech, shape:check, shape:cross, shape:location, shape:sparkle, shape:underline, shape:frame-corners, shape:badge-new, shape:rec-dot.
+- Stickers: animated emoji by name (fire, red-heart, party-popper, thumbs-up, joy, rofl, star-struck, clap, rocket, sparkles, hundred is "100", mind-blown, money-face, eyes, wave, folded-hands, check-mark, cross-mark…) or shapes shape:arrow-right, shape:arrow-curved, shape:subscribe, shape:like, shape:bell, shape:star, shape:heart, shape:burst, shape:speech, shape:check, shape:cross, shape:location, shape:sparkle, shape:underline, shape:frame-corners, shape:badge-new, shape:rec-dot; animated call-to-action presets motion:subscribe (button + click + bell, best for "subscribe" asks), motion:like, motion:bell, motion:arrow-down, motion:arrow-right, motion:tap, motion:swipe-up, motion:hearts.
 
 ## Ops (applied sequentially)
 - set_aspect: 16:9 (YouTube), 9:16 (Reels/TikTok/Shorts), 1:1, 4:5 (Instagram portrait), 4:3, 21:9.

@@ -202,9 +202,20 @@ export interface TextClip extends BaseClip, Partial<Transform>, VisualExtras {
 
 export interface StickerClip extends BaseClip, Partial<Transform>, VisualExtras {
   type: "sticker";
-  /** "emoji:<name>" (animated Noto emoji), "char:<emoji>" or "shape:<id>". */
+  /**
+   * "emoji:<name>" (animated Noto emoji), "char:<emoji>", "shape:<id>", "motion:<id>" (animated preset
+   * drawn in code), "gif:<giphy id>" (GIPHY sticker / GIF, URL in `src`) or "icon:<prefix:name>"
+   * (Iconify icon, SVG markup in `src`).
+   */
   sticker: string;
   color?: string;
+  /** GIF URL (gif:) or SVG markup (icon:). */
+  src?: string;
+  /** Width / height of the source (GIFs are rarely square). */
+  aspect?: number;
+  /** Attribution for the export credits, when the licence asks for it. */
+  credit?: string;
+  license?: string;
 }
 
 export interface EffectClip extends BaseClip {
