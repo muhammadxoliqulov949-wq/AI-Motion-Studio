@@ -97,3 +97,40 @@ export const shiftKeyframes = (clip: Clip, delta: number): Clip["keyframes"] => 
   }
   return out;
 };
+
+/** Properties the "Keyframe" button records: volume for audio clips, the transform for everything else. */
+export const keyframePropsFor = (clip: Clip, assetKind?: string): KeyframeProp[] =>
+  clip.type === "media" && assetKind === "audio" ? ["volume"] : ["x", "y", "scale", "rotation", "opacity"];
+
+/** True when any property has a keyframe at `t` (seconds from clip start). */
+export const hasKeyframeAt = (clip: Clip, t: number) => keyframeTimes(clip).some((k) => Math.abs(k - t) <= 0.02);
+
+/**
+ * The timeline / toolbar "Keyframe" button: on an existing keyframe it removes the keyframes of every
+ * property at that time, otherwise it records the current values of `props` there.
+ */
+export const toggleKeyframesAt = (clip: Clip, t: number, props: KeyframeProp[]): Clip => {
+  if (hasKeyframeAt(clip, t)) {
+    let next = clip;
+    for (const prop of Object.keys(clip.keyframes ?? {}) as KeyframeProp[]) next = removeKeyframe(next, prop, t);
+    return next;
+  }
+  let next = clip;
+  for (const prop of props) next = setKeyframe(next, prop, t, valueAt(next, prop, t));
+  return next;
+};
+
+/**
+ * Removes all keyframes of `props` (every property when omitted). The value the clip shows at `t`
+ * becomes its fixed value, so clearing does not make it jump somewhere else.
+ */
+export const clearKeyframes = (clip: Clip, t: number, props?: KeyframeProp[]): Clip => {
+  const keyframes = { ...clip.keyframes };
+  const fixed: Record<string, number> = {};
+  for (const prop of props ?? (Object.keys(keyframes) as KeyframeProp[])) {
+    if (!keyframes[prop]?.length) continue;
+    fixed[prop] = valueAt(clip, prop, t);
+    delete keyframes[prop];
+  }
+  return { ...clip, ...fixed, keyframes: Object.keys(keyframes).length ? keyframes : undefined } as Clip;
+};

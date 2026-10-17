@@ -35,10 +35,9 @@ import {
 } from "lucide-react";
 import React, { useState } from "react";
 import { cn } from "@/lib/utils";
-import { setKeyframe, valueAt } from "../keyframes";
 import { duplicateClip, removeClip, splitAt, trimToPlayhead } from "../ops";
 import { useCurrentTime, useEditor, useIsPlaying } from "../store";
-import type { Clip, KeyframeProp } from "../types";
+import type { Clip } from "../types";
 import { formatTime, projectDuration } from "../utils";
 import { AiPanel } from "./AiPanel";
 import { ASSET_TABS, AssetPanel, type AssetTab } from "./AssetPanel";
@@ -48,6 +47,7 @@ import { Inspector } from "./Inspector";
 import { MobileTimeline } from "./MobileTimeline";
 import { PreviewPanel } from "./PreviewPanel";
 import { TopBar } from "./TopBar";
+import { useKeyframeToggle } from "./use-keyframe-toggle";
 
 type Sheet =
   | { kind: "assets"; tab: AssetTab }
@@ -64,6 +64,8 @@ interface Tool {
   danger?: boolean;
   accent?: boolean;
   disabled?: boolean;
+  /** Custom button (for tools whose look depends on the playhead, e.g. Keyframe add/remove). */
+  render?: () => React.ReactNode;
 }
 
 /** Short vibration on supported phones (Android); silently ignored elsewhere. */
@@ -136,16 +138,6 @@ export function MobileEditor({ saved, aiBusy, onAiBusyChange }: { saved: boolean
       select(null);
     },
     trim: (side) => commit(trimToPlayhead(project, selected.id, now(), side)),
-    keyframe: () => {
-      if (selected.type === "effect") return;
-      const t = now() - selected.start;
-      if (t < 0 || t > selected.duration) return;
-      const props: KeyframeProp[] = asset?.kind === "audio" ? ["volume"] : ["x", "y", "scale", "rotation", "opacity"];
-      let next: Clip = selected;
-      for (const prop of props) next = setKeyframe(next, prop, t, valueAt(next, prop, t));
-      buzz();
-      commit({ ...project, clips: project.clips.map((c) => (c.id === selected.id ? next : c)) });
-    },
   }) : null;
 
   // While a sheet is open the preview shrinks a little; "expanded" gives the sheet most of the screen.
@@ -241,7 +233,6 @@ function toolsForClip(
     duplicate: () => void;
     remove: () => void;
     trim: (side: "left" | "right") => void;
-    keyframe: () => void;
   },
 ): Tool[] {
   const split: Tool = { id: "split", label: "Kesish", icon: Scissors, onClick: a.split };
@@ -249,7 +240,7 @@ function toolsForClip(
   const del: Tool = { id: "del", label: "O'chirish", icon: Trash2, onClick: a.remove, danger: true };
   const trimL: Tool = { id: "trim-l", label: "Chapini", icon: ArrowLeftToLine, onClick: () => a.trim("left") };
   const trimR: Tool = { id: "trim-r", label: "O'ngini", icon: ArrowRightToLine, onClick: () => a.trim("right") };
-  const kf: Tool = { id: "kf", label: "Keyframe", icon: Diamond, onClick: a.keyframe };
+  const kf: Tool = { id: "kf", label: "Keyframe", icon: Diamond, onClick: () => {}, render: () => <KeyframeTool key="kf" /> };
   const anim = (title: string): Tool => ({ id: "anim", label: "Animatsiya", icon: Sparkles, onClick: () => a.inspect("anim", title) });
 
   if (clip.type === "text") {
@@ -299,22 +290,46 @@ function Toolbar({ tools, onBack }: { tools: Tool[]; onBack?: () => void }) {
         </button>
       )}
       <div className="flex-1 flex overflow-x-auto no-scrollbar px-1">
-        {tools.map(({ id, label, icon: Icon, onClick, danger, accent, disabled }) => (
-          <button
-            key={id}
-            onClick={onClick}
-            disabled={disabled}
-            className={cn(
-              "shrink-0 min-w-[62px] h-[62px] px-1.5 flex flex-col items-center justify-center gap-1 text-[10.5px] rounded-lg active:bg-white/10 disabled:opacity-30",
-              danger ? "text-rose-300" : "text-white/80",
-            )}
-          >
-            <Icon className={cn("size-[21px]", accent && "text-fuchsia-300")} />
-            <span className="whitespace-nowrap">{label}</span>
-          </button>
-        ))}
+        {tools.map(({ id, label, icon: Icon, onClick, danger, accent, disabled, render }) =>
+          render ? (
+            render()
+          ) : (
+            <button
+              key={id}
+              onClick={onClick}
+              disabled={disabled}
+              className={cn(
+                "shrink-0 min-w-[62px] h-[62px] px-1.5 flex flex-col items-center justify-center gap-1 text-[10.5px] rounded-lg active:bg-white/10 disabled:opacity-30",
+                danger ? "text-rose-300" : "text-white/80",
+              )}
+            >
+              <Icon className={cn("size-[21px]", accent && "text-fuchsia-300")} />
+              <span className="whitespace-nowrap">{label}</span>
+            </button>
+          ),
+        )}
       </div>
     </nav>
+  );
+}
+
+/** Adds a keyframe at the playhead, or removes the one the playhead is on (tap a ◆ on the clip to jump to it). */
+function KeyframeTool() {
+  const { enabled, active, toggle } = useKeyframeToggle();
+  return (
+    <button
+      onClick={() => {
+        if (toggle()) buzz();
+      }}
+      disabled={!enabled}
+      className={cn(
+        "shrink-0 min-w-[62px] h-[62px] px-1.5 flex flex-col items-center justify-center gap-1 text-[10.5px] rounded-lg active:bg-white/10 disabled:opacity-30",
+        active ? "text-cyan-300" : "text-white/80",
+      )}
+    >
+      <Diamond className={cn("size-[21px]", active && "fill-current")} />
+      <span className="whitespace-nowrap">{active ? "KF o'chirish" : "Keyframe"}</span>
+    </button>
   );
 }
 

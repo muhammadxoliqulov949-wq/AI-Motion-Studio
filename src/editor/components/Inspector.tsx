@@ -22,7 +22,7 @@ import { FONTS } from "../catalog/fonts";
 import { shapeById } from "../catalog/stickers";
 import { TEXT_TEMPLATES } from "../catalog/text-templates";
 import { TRANSITION_DEFS } from "../catalog/transitions";
-import { KEYFRAME_PROPS, keyframeAt, removeKeyframe, setKeyframe, valueAt } from "../keyframes";
+import { clearKeyframes, KEYFRAME_PROPS, keyframeAt, removeKeyframe, setKeyframe, valueAt } from "../keyframes";
 import { duplicateClip, removeClip, setClipSpeed, templatePatch, updateClip } from "../ops";
 import { ASPECTS, BLEND_MODES, MOTIONS, SPEED_CURVES } from "../presets";
 import { useCurrentTime, useEditor } from "../store";
@@ -143,8 +143,29 @@ function useClipTime(clip: Clip) {
 function TransformSection({ clip, checkpoint, props }: { clip: VisualClip; checkpoint: () => void; props: KeyframeProp[] }) {
   const { project, preview, commit } = useEditor();
   const { t, inside } = useClipTime(clip);
+  const animated = props.filter((p) => clip.keyframes?.[p]?.length);
+  // Distinct ◆ times, matching the diamonds drawn on the timeline clip.
+  const count = new Set(animated.flatMap((p) => clip.keyframes?.[p]?.map((k) => k.t) ?? [])).size;
   return (
-    <Section title="Transformatsiya" action={<span className="text-[10px] text-white/30">◆ = keyframe</span>}>
+    <Section
+      title="Transformatsiya"
+      action={
+        animated.length ? (
+          <button
+            onClick={() => {
+              const next = clearKeyframes(clip, t, animated);
+              commit({ ...project, clips: project.clips.map((c) => (c.id === clip.id ? next : c)) });
+            }}
+            className="h-6 px-2 rounded-md text-[10.5px] text-rose-300/90 bg-rose-500/10 hover:bg-rose-500/20 inline-flex items-center gap-1"
+            title="Shu bo'limdagi barcha keyframe'larni o'chirish"
+          >
+            <Trash2 className="size-3" /> Keyframe'larni tozalash ({count})
+          </button>
+        ) : (
+          <span className="text-[10px] text-white/30">◆ = keyframe</span>
+        )
+      }
+    >
       {KEYFRAME_PROPS.filter((p) => props.includes(p.id)).map((p) => {
         const has = !!clip.keyframes?.[p.id]?.length;
         const active = !!keyframeAt(clip, p.id, t);
@@ -180,6 +201,9 @@ function TransformSection({ clip, checkpoint, props }: { clip: VisualClip; check
         );
       })}
       {!inside && <p className="text-[10px] text-amber-200/70">Keyframe qo&apos;shish uchun playheadni klip ustiga qo&apos;ying.</p>}
+      {inside && animated.length > 0 && (
+        <p className="text-[10px] text-white/35 leading-relaxed">Bitta keyframe&apos;ni o&apos;chirish: timeline&apos;dagi ◆ belgisiga bosing (playhead unga o&apos;tadi), keyin ◆ tugmasini qayta bosing.</p>
+      )}
     </Section>
   );
 }

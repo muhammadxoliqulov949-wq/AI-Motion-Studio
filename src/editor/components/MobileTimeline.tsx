@@ -124,6 +124,10 @@ export function MobileTimeline({ onAddMedia }: { onAddMedia: () => void }) {
                       selected={clip.id === selectedId}
                       touch
                       onTap={() => select(clip.id)}
+                      onKeyframe={(t) => {
+                        select(clip.id);
+                        seek(clip.start + t);
+                      }}
                       onPointerDown={(e, kind) => {
                         // Unselected clips only get selected on tap, so swiping over them still scrolls.
                         if (kind === "move" && clip.id !== selectedId) return;
