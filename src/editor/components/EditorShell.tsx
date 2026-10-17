@@ -19,6 +19,7 @@ import { MobileEditor } from "./MobileEditor";
 import { PreviewPanel } from "./PreviewPanel";
 import { Timeline } from "./Timeline";
 import { TopBar } from "./TopBar";
+import { toggleSelectedKeyframe } from "./use-keyframe-toggle";
 
 export default function EditorShell() {
   const initial = useMemo(() => {
@@ -191,6 +192,10 @@ function useShortcuts() {
         togglePlay();
       } else if (key === "s" && !mod) {
         commit(splitAt(project, time, selectedId ?? undefined));
+      } else if (key === "k" && !mod) {
+        // Add a keyframe at the playhead, or remove the one under it.
+        const next = toggleSelectedKeyframe(project, assets, selectedId, time);
+        if (next) commit(next);
       } else if (key === "q" && !mod && selectedId) {
         commit(trimToPlayhead(project, selectedId, time, "left"));
       } else if (key === "w" && !mod && selectedId) {

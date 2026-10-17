@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import { EFFECTS } from "../catalog/effects";
 import { FILTERS } from "../catalog/filters";
 import { emojiByName, shapeById } from "../catalog/stickers";
-import { keyframeTimes, setKeyframe, valueAt } from "../keyframes";
+import { keyframeTimes } from "../keyframes";
 import {
   addTrack,
   duplicateClip,
@@ -53,11 +53,12 @@ import {
 } from "../ops";
 import { TEXT_TEMPLATES } from "../presets";
 import { useCurrentTime, useEditor, useIsPlaying } from "../store";
-import type { Clip, KeyframeProp, MediaAsset, Track, TrackKind } from "../types";
+import type { Clip, MediaAsset, Track, TrackKind } from "../types";
 import { clamp, formatShort, projectDuration, round } from "../utils";
 import { useRealPeaks } from "./assets/use-insert";
 import { DND } from "./dnd";
 import { useClipDrag } from "./use-clip-drag";
+import { useKeyframeToggle } from "./use-keyframe-toggle";
 
 const HEADER_W = 172;
 export const RULER_H = 28;
@@ -82,7 +83,6 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
 
   const assetMap = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
   const contentW = Math.max(total + 20, 60) * pps;
-  const selected = project.clips.find((c) => c.id === selectedId);
   // Like CapCut, empty tracks stay hidden until something is placed on them (main video always shows).
   const usedTracks = new Set(project.clips.map((c) => c.trackId));
   const visibleTracks = project.tracks.filter((t) => t.id === "V1" || usedTracks.has(t.id) || t.locked || t.hidden || t.muted || pinned.includes(t.id));
@@ -200,15 +200,6 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
     if (r.id) select(r.id);
   };
   const trim = (side: "left" | "right") => selectedId && commit(trimToPlayhead(project, selectedId, now(), side));
-  const addKeyframes = () => {
-    if (!selected || selected.type === "effect") return;
-    const t = now() - selected.start;
-    if (t < 0 || t > selected.duration) return;
-    const props: KeyframeProp[] = selected.type === "media" && assetMap.get(selected.assetId)?.kind === "audio" ? ["volume"] : ["x", "y", "scale", "rotation", "opacity"];
-    let next: Clip = selected;
-    for (const prop of props) next = setKeyframe(next, prop, t, valueAt(next, prop, t));
-    commit({ ...project, clips: project.clips.map((c) => (c.id === selected.id ? next : c)) });
-  };
 
   const setTrack = (id: string, patch: Partial<Track>) => commit({ ...project, tracks: project.tracks.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
 
@@ -259,9 +250,7 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
           <Layers className="size-3.5" /> {!compact && "Ripple"}
         </button>
         {sep}
-        <button className={tool} onClick={addKeyframes} disabled={!selected || selected.type === "effect"} title="Playheadda keyframe qo'shish (K)">
-          <Diamond className="size-3.5" /> {!compact && "Keyframe"}
-        </button>
+        <KeyframeButton className={tool} compact={compact} />
         <button className={cn(tool, snap && "text-cyan-300 bg-cyan-400/10")} onClick={() => setSnap(!snap)} title="Magnit (yopishish)">
           <Magnet className="size-3.5" /> {!compact && "Snap"}
         </button>
@@ -350,6 +339,10 @@ export function Timeline({ compact = false }: { compact?: boolean }) {
                       selected={clip.id === selectedId}
                       onPointerDown={(e, kind) => startClipDrag(e, clip, kind, track)}
                       onDrop={(e) => onClipDrop(e, clip)}
+                      onKeyframe={(t) => {
+                        select(clip.id);
+                        seek(clip.start + t);
+                      }}
                     />
                   ))}
               </div>
@@ -470,6 +463,7 @@ export function ClipView({
   touch = false,
   height,
   onTap,
+  onKeyframe,
 }: {
   clip: Clip;
   track: Track;
@@ -483,6 +477,8 @@ export function ClipView({
   /** Lane height override (mobile uses its own sizes). */
   height?: number;
   onTap?: () => void;
+  /** Click / tap on a keyframe diamond (time in seconds from the clip start): jump the playhead there. */
+  onKeyframe?: (t: number) => void;
 }) {
   const left = clip.start * pps;
   const width = Math.max(4, clip.duration * pps);
@@ -567,9 +563,25 @@ export function ClipView({
           title={`O'tish: ${clip.transitionIn}`}
         />
       )}
-      {kfTimes.map((t) => (
-        <Diamond key={t} className="absolute bottom-0.5 size-2.5 -ml-[5px] text-cyan-200 fill-cyan-300 pointer-events-none" style={{ left: t * pps }} />
-      ))}
+      {kfTimes.map((t) =>
+        onKeyframe ? (
+          <button
+            key={t}
+            className={cn("absolute bottom-0 grid place-items-center z-20", touch ? "size-6 -ml-3" : "size-4 -ml-2")}
+            style={{ left: t * pps, touchAction: "manipulation" }}
+            title="Keyframe'ga o'tish"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onKeyframe(t);
+            }}
+          >
+            <Diamond className={cn("text-cyan-100 fill-cyan-300 drop-shadow", touch ? "size-3.5" : "size-2.5")} />
+          </button>
+        ) : (
+          <Diamond key={t} className="absolute bottom-0.5 size-2.5 -ml-[5px] text-cyan-200 fill-cyan-300 pointer-events-none" style={{ left: t * pps }} />
+        ),
+      )}
       {touch ? (
         selected && (
           <>
@@ -584,6 +596,16 @@ export function ClipView({
         </>
       )}
     </div>
+  );
+}
+
+/** Timeline toolbar "Keyframe" button: adds a keyframe at the playhead, or removes the one under it. */
+function KeyframeButton({ className, compact }: { className: string; compact: boolean }) {
+  const { enabled, active, toggle } = useKeyframeToggle();
+  return (
+    <button className={cn(className, active && "text-cyan-300 bg-cyan-400/10")} onClick={toggle} disabled={!enabled} title={active ? "Playheaddagi keyframe'ni o'chirish (K)" : "Playheadda keyframe qo'shish (K)"}>
+      <Diamond className={cn("size-3.5", active && "fill-current")} /> {!compact && (active ? "Keyframe o'chirish" : "Keyframe")}
+    </button>
   );
 }
 

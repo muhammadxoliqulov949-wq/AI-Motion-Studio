@@ -18,6 +18,7 @@ const SHORTCUTS: [string, string][] = [
   ["Delete", "O'chirish (Shift — ripple)"],
   ["Ctrl+C / X / V", "Nusxa / kesib olish / qo'yish"],
   ["Ctrl+D", "Klip nusxasi"],
+  ["K", "Keyframe qo'shish / o'chirish"],
   ["Ctrl+Z / Ctrl+Shift+Z", "Bekor qilish / qaytarish"],
   ["← / →", "1 kadr (Shift — 1 soniya)"],
   ["Home / End", "Boshi / oxiri"],
