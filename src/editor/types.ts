@@ -15,6 +15,11 @@ export interface MediaAsset {
   duration: number;
   /** Object URL / data URL / http(s) / public path. Missing for synthetic scenes. */
   src?: string;
+  /**
+   * Light 540p copy used only by the editor preview so big (1080p / 4K) uploads play smoothly.
+   * Export always uses `src`. Session-only object URL: never saved.
+   */
+  proxySrc?: string;
   /** Synthetic demo scene rendered in code instead of a file. */
   scene?: SceneId;
   /** Filmstrip frames (data URLs) for the timeline. */

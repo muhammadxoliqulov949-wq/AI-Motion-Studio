@@ -9,7 +9,7 @@ import { ASPECTS } from "../presets";
 import { useEditor } from "../store";
 import type { AspectRatio } from "../types";
 import { CloudMenu } from "./CloudMenu";
-import { TemplatePicker } from "./TemplatePicker";
+import { StartScreen } from "./StartScreen";
 
 const SHORTCUTS: [string, string][] = [
   ["Space", "Ijro / pauza"],
@@ -26,11 +26,25 @@ const SHORTCUTS: [string, string][] = [
   ["Esc", "Tanlovni bekor qilish"],
 ];
 
-export function TopBar({ onExport, compact = false, saved = true }: { onExport: () => void; compact?: boolean; saved?: boolean }) {
+export function TopBar({
+  onExport,
+  compact = false,
+  saved = true,
+  onOpenAi,
+  showStart = false,
+}: {
+  onExport: () => void;
+  compact?: boolean;
+  saved?: boolean;
+  /** Opens the AI chat (desktop tab / phone sheet) from the start screen. */
+  onOpenAi?: () => void;
+  /** Open the start screen right away (first visit). */
+  showStart?: boolean;
+}) {
   const { project, commit, preview, checkpoint, undo, redo, canUndo, canRedo } = useEditor();
   const [aspectOpen, setAspectOpen] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
-  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(showStart);
   const ib = "size-8 grid place-items-center rounded-md text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent";
 
   return (
@@ -46,7 +60,12 @@ export function TopBar({ onExport, compact = false, saved = true }: { onExport: 
           onChange={(e) => preview({ ...project, name: e.target.value })}
           className="bg-transparent text-sm font-medium text-white outline-none rounded px-1.5 py-1 hover:bg-white/5 focus:bg-white/10 w-full lg:w-56 min-w-0 truncate"
         />
-        {!compact && (
+        {compact ? (
+          // Phone: just the state icon next to the name.
+          <span className={cn("shrink-0", saved ? "text-emerald-300/80" : "text-white/30")} title={saved ? "Saqlandi" : "Saqlanmoqda…"} aria-label={saved ? "Saqlandi" : "Saqlanmoqda"}>
+            {saved ? <Check className="size-3.5" /> : <CloudOff className="size-3.5 animate-pulse" />}
+          </span>
+        ) : (
           <span className={cn("text-[11px] hidden xl:inline-flex items-center gap-1 shrink-0", saved ? "text-white/35" : "text-white/25")}>
             {saved ? <Check className="size-3" /> : <CloudOff className="size-3" />}
             {saved ? "Brauzerda saqlandi" : "Saqlanmoqda…"}
@@ -120,13 +139,13 @@ export function TopBar({ onExport, compact = false, saved = true }: { onExport: 
       )}
       <button
         className={cn(ib, !compact && "w-auto px-2.5 gap-1.5 text-[12px] inline-flex items-center")}
-        title="Yangi loyiha va shablonlar"
+        title="Yangi: AI montaj, shablonlar, bo'sh loyiha"
         onClick={() => setTemplatesOpen(true)}
       >
         <FilePlus2 className="size-4" />
-        {!compact && "Shablonlar"}
+        {!compact && "Yangi"}
       </button>
-      <TemplatePicker open={templatesOpen} onClose={() => setTemplatesOpen(false)} />
+      <StartScreen open={templatesOpen} onClose={() => setTemplatesOpen(false)} onOpenAi={onOpenAi} />
       <CloudMenu compact={compact} />
       <button
         onClick={onExport}

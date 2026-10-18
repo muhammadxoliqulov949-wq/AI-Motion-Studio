@@ -8,6 +8,7 @@ import { createSampleAssets, renderDemoMusic } from "../sample-media";
 import { EditorProvider, useEditor } from "../store";
 import { loadMedia } from "../media-store";
 import { loadSaved, saveProject } from "../persist";
+import { useProxyQueue } from "../proxy";
 import type { Clip } from "../types";
 import { projectDuration, round, uid } from "../utils";
 import { AiPanel } from "./AiPanel";
@@ -24,11 +25,13 @@ import { toggleSelectedKeyframe } from "./use-keyframe-toggle";
 export default function EditorShell() {
   const initial = useMemo(() => {
     const demo = createSampleAssets().map((a) => ({ ...a, origin: "demo" as const }));
-    return loadSaved(demo) ?? { project: createInitialProject(demo), assets: demo };
+    const saved = loadSaved(demo);
+    // No saved session = first visit: greet with the start screen.
+    return saved ? { ...saved, first: false } : { project: createInitialProject(demo), assets: demo, first: true };
   }, []);
   return (
     <EditorProvider initialProject={initial.project} initialAssets={initial.assets}>
-      <Editor />
+      <Editor first={initial.first} />
     </EditorProvider>
   );
 }
@@ -54,7 +57,7 @@ const useIsDesktop = () => {
   return desktop;
 };
 
-function Editor() {
+function Editor({ first }: { first: boolean }) {
   const { addAssets, selectedId, project, assets } = useEditor();
   const [exportOpen, setExportOpen] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -85,6 +88,8 @@ function Editor() {
   }, [desktop, tab]);
 
   useShortcuts();
+  // Light 540p copies of big uploads for a smooth preview (export keeps the originals).
+  useProxyQueue();
 
   const tabs: SideTab[] = ["inspector", "ai", "code"];
 
@@ -125,11 +130,11 @@ function Editor() {
   );
 
   // Phones and small tablets get the CapCut-mobile editor; desktop keeps the three-panel layout below.
-  if (!desktop) return <MobileEditor saved={saved} aiBusy={aiBusy} onAiBusyChange={setAiBusy} />;
+  if (!desktop) return <MobileEditor saved={saved} aiBusy={aiBusy} onAiBusyChange={setAiBusy} showStart={first} />;
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#0a0a0c] text-white overflow-hidden">
-      <TopBar onExport={() => setExportOpen(true)} saved={saved} />
+      <TopBar onExport={() => setExportOpen(true)} saved={saved} showStart={first} onOpenAi={() => setTab("ai")} />
       <div className="flex-1 min-h-0 flex">
         <aside className="w-[340px] xl:w-[380px] shrink-0 border-r border-white/[0.06] bg-[#111115]">
           <AssetPanel tab={assetTab} onTab={setAssetTab} />

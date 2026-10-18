@@ -91,7 +91,7 @@ const serializableAssets = (project: Project, assets: MediaAsset[]) => {
   return assets
     .filter((a) => !a.scene && a.id !== "asset_music" && (used.has(a.id) || isFileAsset(a) || a.origin === "stock"))
     .filter((a) => !isFileAsset(a) || a.storagePath)
-    .map((a) => (a.storagePath ? { ...a, src: undefined } : a));
+    .map((a) => ({ ...a, proxySrc: undefined, ...(a.storagePath ? { src: undefined } : {}) }));
 };
 
 export const saveCloudProject = async (id: string | null, project: Project, assets: MediaAsset[]) => {

@@ -32,8 +32,9 @@ const tx = async <T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => I
 
 export const saveMedia = async (asset: MediaAsset, blob: Blob) => {
   try {
-    const { src: _src, ...meta } = asset;
+    const { src: _src, proxySrc: _proxy, ...meta } = asset;
     void _src;
+    void _proxy;
     await tx("readwrite", (s) => s.put({ id: asset.id, asset: meta, blob } satisfies Row));
   } catch (err) {
     console.warn("Media could not be stored for reload", err);

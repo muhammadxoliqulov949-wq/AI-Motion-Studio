@@ -83,7 +83,7 @@ const buzz = () => {
  * playhead, and a bottom toolbar. Libraries and clip settings open as bottom sheets in place of the
  * timeline so the preview stays visible. The desktop editor is untouched (see EditorShell).
  */
-export function MobileEditor({ saved, aiBusy, onAiBusyChange }: { saved: boolean; aiBusy: boolean; onAiBusyChange: (busy: boolean) => void }) {
+export function MobileEditor({ saved, aiBusy, onAiBusyChange, showStart = false }: { saved: boolean; aiBusy: boolean; onAiBusyChange: (busy: boolean) => void; showStart?: boolean }) {
   const { project, assets, selectedId, select, commit, playhead } = useEditor();
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -145,7 +145,7 @@ export function MobileEditor({ saved, aiBusy, onAiBusyChange }: { saved: boolean
 
   return (
     <div className="mobile-editor h-dvh w-screen flex flex-col bg-[#0a0a0c] text-white overflow-hidden">
-      <TopBar onExport={() => setExportOpen(true)} compact saved={saved} />
+      <TopBar onExport={() => setExportOpen(true)} compact saved={saved} showStart={showStart} onOpenAi={() => open({ kind: "ai" })} />
       <div className="shrink-0 transition-[height] duration-200" style={{ height: previewH }}>
         <PreviewPanel aiBusy={aiBusy} compact hideTransport />
       </div>

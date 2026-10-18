@@ -7,18 +7,9 @@ import { addTrack, insertClip, makeMediaClip } from "../ops";
 import { computePeaks } from "../sample-media";
 import { useEditor } from "../store";
 import { round, uid } from "../utils";
+import { speak } from "../catalog/voices";
 import { Chips, Section, Slider } from "./ui";
-
-const VOICES: [string, string][] = [
-  ["nova", "Nova (ayol)"],
-  ["shimmer", "Shimmer (ayol)"],
-  ["coral", "Coral (ayol)"],
-  ["sage", "Sage (ayol)"],
-  ["onyx", "Onyx (erkak)"],
-  ["echo", "Echo (erkak)"],
-  ["ash", "Ash (erkak)"],
-  ["verse", "Verse (erkak)"],
-];
+import { VoicePicker } from "./VoicePicker";
 
 const STYLES: [string, string][] = [
   ["", "Tabiiy"],
@@ -33,7 +24,7 @@ export function VoicePanel() {
   const { project, selectedId, commit, addAssets, playhead } = useEditor();
   const selected = project.clips.find((c) => c.id === selectedId);
   const [text, setText] = useState("");
-  const [voice, setVoice] = useState("nova");
+  const [voice, setVoice] = useState("openai:nova");
   const [style, setStyle] = useState("");
   const [speed, setSpeed] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -47,22 +38,7 @@ export function VoicePanel() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice, speed, style }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(
-          data.code === "no_api_key"
-            ? "Ovoz yaratish uchun serverda OPENAI_API_KEY kerak."
-            : data.code === "rate_limited"
-              ? "Juda ko'p so'rov — birozdan keyin urinib ko'ring."
-              : (data.error ?? `HTTP ${res.status}`),
-        );
-      }
-      const blob = await res.blob();
+      const blob = await speak({ text, voice, speed, style });
       const ctx = new AudioContext();
       const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
       void ctx.close();
@@ -117,7 +93,7 @@ export function VoicePanel() {
         <div className="text-right text-[10px] text-white/30">{text.length}/1500</div>
       </Section>
       <Section title="Ovoz">
-        <Chips value={voice} options={VOICES} onChange={setVoice} size="sm" />
+        <VoicePicker value={voice} onChange={setVoice} compact />
       </Section>
       <Section title="Uslub">
         <Chips value={style} options={STYLES} onChange={setStyle} size="sm" />
