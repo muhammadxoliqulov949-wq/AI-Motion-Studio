@@ -1,9 +1,10 @@
 "use client";
 
 import { Player, Thumbnail } from "@remotion/player";
-import { ArrowLeft, Check, Clapperboard, FilePlus2, Film, MessageSquareText, Play, RotateCcw, Sparkles, TriangleAlert, Upload, Wand2, X, Zap } from "lucide-react";
+import { ArrowLeft, Check, Clapperboard, FilePlus2, Film, MessageSquareText, Palette, Play, RotateCcw, ScrollText, Sparkles, TriangleAlert, Upload, Wand2, X, Zap } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useBrandKit } from "../brand-kit";
 import { TimelineComposition } from "../composition/TimelineComposition";
 import { createInitialProject } from "../ops";
 import { ASPECTS } from "../presets";
@@ -12,6 +13,8 @@ import { useEditor } from "../store";
 import { emptyProject, PROJECT_TEMPLATES } from "../templates";
 import type { MediaAsset, Project } from "../types";
 import { projectDuration } from "../utils";
+import { BrandKitView } from "./BrandKitView";
+import { ScriptVideo } from "./ScriptVideo";
 
 /**
  * "Qayerdan boshlaysiz?" — the first thing a new user sees (and the "Yangi" button later):
@@ -19,7 +22,9 @@ import { projectDuration } from "../utils";
  * Full screen on phones, a large dialog on desktop. Every start is undoable (Ctrl+Z / ↶).
  */
 export function StartScreen({ open, onClose, onOpenAi }: { open: boolean; onClose: () => void; onOpenAi?: () => void }) {
-  const [view, setView] = useState<"home" | "quick">("home");
+  const [view, setView] = useState<"home" | "quick" | "script" | "brand">("home");
+  // The brand kit is opened from the script flow too: go back to where the user came from.
+  const [brandFrom, setBrandFrom] = useState<"home" | "script">("home");
   if (!open) return null;
   const close = () => {
     setView("home");
@@ -34,18 +39,37 @@ export function StartScreen({ open, onClose, onOpenAi }: { open: boolean; onClos
         <button onClick={close} className="absolute top-3 right-3 z-10 size-9 grid place-items-center rounded-lg text-white/50 hover:text-white hover:bg-white/10 mt-[env(safe-area-inset-top)]" title="Yopish">
           <X className="size-5" />
         </button>
-        {view === "home" ? (
+        {view === "home" && (
           <Home
             onQuick={() => setView("quick")}
+            onScript={() => setView("script")}
+            onBrand={() => {
+              setBrandFrom("home");
+              setView("brand");
+            }}
             onAi={() => {
               close();
               onOpenAi?.();
             }}
             onDone={close}
           />
-        ) : (
-          <QuickMontage onBack={() => setView("home")} onDone={close} onOpenAi={onOpenAi} />
         )}
+        {view === "quick" && <QuickMontage onBack={() => setView("home")} onDone={close} onOpenAi={onOpenAi} />}
+        {/* Kept mounted while the brand kit is open so the script cards are not lost. */}
+        <div className={view === "script" ? "" : "hidden"}>
+          {(view === "script" || (view === "brand" && brandFrom === "script")) && (
+            <ScriptVideo
+              onBack={() => setView("home")}
+              onDone={close}
+              onOpenAi={onOpenAi}
+              onBrand={() => {
+                setBrandFrom("script");
+                setView("brand");
+              }}
+            />
+          )}
+        </div>
+        {view === "brand" && <BrandKitView onBack={() => setView(brandFrom)} onDone={() => setView(brandFrom === "script" ? "script" : "home")} />}
       </div>
     </div>
   );
@@ -53,8 +77,9 @@ export function StartScreen({ open, onClose, onOpenAi }: { open: boolean; onClos
 
 // ---------------- Home ----------------
 
-function Home({ onQuick, onAi, onDone }: { onQuick: () => void; onAi: () => void; onDone: () => void }) {
+function Home({ onQuick, onScript, onBrand, onAi, onDone }: { onQuick: () => void; onScript: () => void; onBrand: () => void; onAi: () => void; onDone: () => void }) {
   const { assets, commit, addAssets, select } = useEditor();
+  const brand = useBrandKit();
   const start = (build: () => { project: Project; assets?: MediaAsset[] }) => {
     const r = build();
     if (r.assets?.length) addAssets(r.assets);
@@ -70,15 +95,15 @@ function Home({ onQuick, onAi, onDone }: { onQuick: () => void; onAi: () => void
         <p className="text-[12.5px] text-white/50 mt-1">Videongizni tashlang — qolganini AI qiladi. Yoki tayyor shablondan boshlang.</p>
       </div>
 
-      <div className="mt-5 grid gap-2.5 sm:grid-cols-[1.4fr_1fr_1fr]">
+      <div className="mt-5 grid gap-2.5 sm:grid-cols-2">
         <button
           onClick={onQuick}
-          className="group relative overflow-hidden rounded-2xl p-4 sm:p-5 text-left bg-gradient-to-br from-violet-600 via-fuchsia-600 to-orange-500 shadow-[0_20px_60px_-20px_rgba(217,70,239,0.7)] hover:brightness-110 transition sm:row-span-2"
+          className="group relative overflow-hidden rounded-2xl p-4 sm:p-5 text-left bg-gradient-to-br from-violet-600 via-fuchsia-600 to-orange-500 shadow-[0_20px_60px_-20px_rgba(217,70,239,0.7)] hover:brightness-110 transition"
         >
           <div className="absolute -right-6 -bottom-8 text-[120px] opacity-15 rotate-12 select-none">⚡</div>
           <Zap className="size-6 text-white mb-3" />
-          <div className="text-[17px] font-bold text-white">Bir bosishda AI montaj</div>
-          <p className="text-[12px] text-white/85 mt-1 leading-relaxed max-w-[320px]">Videolaringizni tanlang, uslubni bosing — 30 soniyada musiqa, kesish, subtitr va ranglar bilan tayyor video.</p>
+          <div className="text-[17px] font-bold text-white">Videolarim bor — AI montaj qilsin</div>
+          <p className="text-[12px] text-white/85 mt-1 leading-relaxed max-w-[340px]">Videolaringizni tanlang, uslubni bosing — 30 soniyada musiqa, kesish, subtitr va ranglar bilan tayyor video.</p>
           <div className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-xl bg-white text-black text-[13px] font-semibold">
             <Upload className="size-4" /> Boshlash
           </div>
@@ -90,8 +115,23 @@ function Home({ onQuick, onAi, onDone }: { onQuick: () => void; onAi: () => void
             ))}
           </div>
         </button>
-        <ActionCard icon={MessageSquareText} title="AI bilan yozish" text="Nima xohlaysiz — oddiy so'z bilan ayting" accent onClick={onAi} />
-        <ActionCard icon={Clapperboard} title="Demo bilan sinash" text="4 ta xom klip — AI'ni sinab ko'ring" onClick={() => start(() => ({ project: createInitialProject(assets) }))} />
+        <button
+          onClick={onScript}
+          className="group relative overflow-hidden rounded-2xl p-4 sm:p-5 text-left bg-gradient-to-br from-cyan-600 via-sky-600 to-indigo-600 shadow-[0_20px_60px_-20px_rgba(14,165,233,0.7)] hover:brightness-110 transition"
+        >
+          <div className="absolute -right-6 -bottom-8 text-[120px] opacity-15 -rotate-12 select-none">📝</div>
+          <ScrollText className="size-6 text-white mb-3" />
+          <div className="text-[17px] font-bold text-white">Faqat mavzu bor — video yasab ber</div>
+          <p className="text-[12px] text-white/85 mt-1 leading-relaxed max-w-[340px]">Mavzuni yozing: AI ssenariy yozadi, kadr topadi, o&apos;zbekcha ovoz va subtitr qo&apos;shadi. Ssenariyni o&apos;zingiz tahrirlaysiz.</p>
+          <div className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-xl bg-white text-black text-[13px] font-semibold">
+            <Sparkles className="size-4" /> Mavzudan boshlash
+          </div>
+        </button>
+      </div>
+      <div className="mt-2.5 grid gap-2.5 grid-cols-2 sm:grid-cols-5">
+        <ActionCard icon={MessageSquareText} title="AI bilan yozish" text="Oddiy so'z bilan ayting" accent onClick={onAi} />
+        <ActionCard icon={Palette} title="Brend to'plami" text={brand ? (brand.name || "Sozlangan") + " · tahrirlash" : "Logo, ranglar, shrift"} accent onClick={onBrand} />
+        <ActionCard icon={Clapperboard} title="Demo bilan sinash" text="4 ta xom klip" onClick={() => start(() => ({ project: createInitialProject(assets) }))} />
         <ActionCard icon={FilePlus2} title="Bo'sh loyiha" text="Hammasini o'zim qilaman" onClick={() => start(() => ({ project: emptyProject() }))} />
         <ActionCard icon={RotateCcw} title="Davom etish" text="Oxirgi loyihaga qaytish" onClick={onDone} />
       </div>

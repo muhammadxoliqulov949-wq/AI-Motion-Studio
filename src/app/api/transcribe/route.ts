@@ -1,4 +1,5 @@
 import { rateLimit, rateLimitedResponse } from "@/lib/rate-limit";
+import { uzCyrillicToLatin } from "@/lib/uz-translit";
 import { createOpenAI } from "@ai-sdk/openai";
 import { experimental_transcribe as transcribe } from "ai";
 
@@ -10,6 +11,8 @@ import { experimental_transcribe as transcribe } from "ai";
 /** ~30 chunks per 10 minutes per IP. */
 const RATE_LIMIT = { name: "transcribe", limit: 30, windowMs: 10 * 60 * 1000 };
 const MAX_BYTES = 4_200_000;
+/** Whisper often answers Uzbek in Cyrillic; a Latin-script prompt steers it to the Latin alphabet. */
+const UZ_PROMPT = "Assalomu alaykum! Bugun oʻzbek tilida gaplashamiz: gʻoya, qiziqarli videolar, yangiliklar va maslahatlar haqida.";
 
 export async function POST(req: Request) {
   const limited = await rateLimit(req, RATE_LIMIT);
@@ -48,13 +51,17 @@ export async function POST(req: Request) {
         openai: {
           timestampGranularities: ["segment"],
           ...(language && /^[a-z]{2}$/.test(language) ? { language } : {}),
+          ...(language === "uz" ? { prompt: UZ_PROMPT } : {}),
         },
       },
     });
+    // Detected-or-requested Uzbek: make sure captions are Latin (the editor's alphabet).
+    const uzbek = language === "uz" || /^uz/i.test(result.language ?? "");
+    const fix = (t: string) => (uzbek ? uzCyrillicToLatin(t) : t);
     return Response.json({
-      text: result.text,
+      text: fix(result.text),
       language: result.language ?? null,
-      segments: result.segments.map((s) => ({ text: s.text.trim(), start: s.startSecond, end: s.endSecond })),
+      segments: result.segments.map((s) => ({ text: fix(s.text.trim()), start: s.startSecond, end: s.endSecond })),
     });
   } catch (err) {
     console.error("Transcription failed:", err);
