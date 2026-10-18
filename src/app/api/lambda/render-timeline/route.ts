@@ -22,11 +22,19 @@ const FORMATS = {
   mp3: { codec: "mp3", ext: "mp3" },
 } as const;
 
+const lambdaConfigured = () =>
+  !!(process.env.AWS_ACCESS_KEY_ID || process.env.REMOTION_AWS_ACCESS_KEY_ID) && !!(process.env.AWS_SECRET_ACCESS_KEY || process.env.REMOTION_AWS_SECRET_ACCESS_KEY);
+
+/** Lets the export dialog pick server rendering by default on phones when it is available. */
+export function GET() {
+  return Response.json({ available: lambdaConfigured(), authRequired: supabaseEnabled }, { headers: { "Cache-Control": "no-store" } });
+}
+
 export async function POST(req: Request) {
   const limited = await rateLimit(req, RATE_LIMIT);
   if (!limited.ok) return rateLimitedResponse(limited);
 
-  if (!(process.env.AWS_ACCESS_KEY_ID || process.env.REMOTION_AWS_ACCESS_KEY_ID) || !(process.env.AWS_SECRET_ACCESS_KEY || process.env.REMOTION_AWS_SECRET_ACCESS_KEY)) {
+  if (!lambdaConfigured()) {
     return Response.json({ error: "Serverda Remotion Lambda (AWS kalitlari) sozlanmagan.", code: "no_lambda" }, { status: 503 });
   }
   if (supabaseEnabled && !(await getUserFromRequest(req))) {

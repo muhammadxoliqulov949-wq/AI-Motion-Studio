@@ -16,6 +16,7 @@ import { TimelineComposition } from "../composition/TimelineComposition";
 import { ASPECTS } from "../presets";
 import { useCurrentTime, useEditor, useIsPlaying } from "../store";
 import { setKeyframe, valueAt } from "../keyframes";
+import { useProxyStatus, withProxies } from "../proxy";
 import type { Clip, KeyframeProp } from "../types";
 import { clamp, formatTime, projectDuration, round } from "../utils";
 
@@ -24,7 +25,8 @@ export function PreviewPanel({ aiBusy, compact = false, hideTransport = false }:
   const { width, height } = ASPECTS[project.aspect];
   const total = projectDuration(project);
   const durationInFrames = Math.max(project.fps, Math.ceil(total * project.fps));
-  const inputProps = useMemo(() => ({ project, assets }), [project, assets]);
+  // The preview plays light proxies of big uploads where they are ready.
+  const inputProps = useMemo(() => ({ project, assets: withProxies(assets) }), [project, assets]);
 
   const boxRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -89,6 +91,7 @@ export function PreviewPanel({ aiBusy, compact = false, hideTransport = false }:
               acknowledgeRemotionLicense
             />
             <DirectManipulation width={size.w} height={size.h} />
+            <ProxyPill />
             {aiBusy && (
               <div className="absolute inset-0 pointer-events-none ai-scan">
                 <div className="absolute inset-0 bg-violet-500/10" />
@@ -252,6 +255,21 @@ function DirectManipulation({ width, height }: { width: number; height: number }
       <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-cyan-400 text-black text-[10px] font-semibold pointer-events-none">
         Sudrab joylashtiring
       </div>
+    </div>
+  );
+}
+
+/** Shows while big uploads get their light preview copies. */
+function ProxyPill() {
+  const { pending, current, progress } = useProxyStatus();
+  if (!current && !pending.length) return null;
+  return (
+    <div
+      className="absolute bottom-1.5 left-1.5 z-10 px-2 py-1 rounded-full bg-black/70 ring-1 ring-white/15 text-[10px] text-white/80 inline-flex items-center gap-1.5 pointer-events-none"
+      title="Katta videolar uchun yengil nusxa: preview silliq ishlaydi, eksport original sifatda bo'ladi"
+    >
+      <span className="size-1.5 rounded-full bg-amber-300 animate-pulse" />
+      Yengil preview{pending.length > 1 ? ` (${pending.length})` : ""} · {Math.round(progress * 100)}%
     </div>
   );
 }

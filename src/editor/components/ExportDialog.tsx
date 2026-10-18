@@ -68,6 +68,22 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   const blobSources = assets.filter((a) => a.src?.startsWith("blob:")).length;
 
+  // Phones: render on the server by default (faster, no battery drain, works on iOS Safari) when it is
+  // configured and the edit has no local-only files the server could not read.
+  useEffect(() => {
+    if (!open || window.matchMedia("(min-width: 1024px)").matches) return;
+    let alive = true;
+    fetch("/api/lambda/render-timeline")
+      .then((r) => r.json())
+      .then((d: { available?: boolean }) => {
+        if (alive && d.available && !blobSources) setWhere("server");
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [open, blobSources]);
+
   /** Remotion Lambda: renders in the cloud, polls progress, returns a download URL. */
   const startServer = async () => {
     const controller = new AbortController();
