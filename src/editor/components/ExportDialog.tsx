@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Copy, Download, Film, Loader2, TriangleAlert, X } from "lucide-react";
+import { CheckCircle2, Copy, Download, Film, Loader2, Share2, TriangleAlert, X } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { NOTO_LICENSE } from "../catalog/stickers";
@@ -289,6 +289,7 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
             <a href={phase.url} download={phase.name} className="mt-4 w-full h-10 rounded-xl bg-cyan-400 text-black text-sm font-semibold hover:bg-cyan-300 inline-flex items-center justify-center gap-2">
               <Download className="size-4" /> Yuklab olish
             </a>
+            <ShareButton url={phase.url} name={phase.name} />
             <button onClick={() => setPhase({ kind: "idle" })} className="mt-2 text-[11px] text-white/50 hover:text-white">
               Boshqa sozlama bilan qayta render
             </button>
@@ -316,6 +317,41 @@ function Opt({ active, onClick, children, title }: { active: boolean; onClick: (
       className={cn("h-9 rounded-lg text-xs font-medium ring-1", active ? "ring-cyan-300 bg-cyan-400/15 text-white" : "ring-white/10 text-white/60 hover:text-white")}
     >
       {children}
+    </button>
+  );
+}
+
+/**
+ * Phone: the system share sheet with the video file (Telegram, Instagram, TikTok…).
+ * Desktop / no file sharing: shares or copies the link of a server render.
+ */
+function ShareButton({ url, name }: { url: string; name: string }) {
+  const [state, setState] = useState<"idle" | "busy" | "copied" | "failed">("idle");
+  const share = async () => {
+    setState("busy");
+    try {
+      const blob = await fetch(url).then((r) => r.blob());
+      const file = new File([blob], name, { type: blob.type || "video/mp4" });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: name });
+        setState("idle");
+        return;
+      }
+      if (/^https?:/.test(url)) {
+        if (navigator.share) await navigator.share({ url, title: name });
+        else await navigator.clipboard.writeText(url);
+        setState("copied");
+        return;
+      }
+      setState("failed");
+    } catch (err) {
+      setState((err as Error).name === "AbortError" ? "idle" : "failed");
+    }
+  };
+  return (
+    <button onClick={() => void share()} disabled={state === "busy"} className="mt-2 w-full h-10 rounded-xl bg-white/10 text-white text-sm font-medium hover:bg-white/15 inline-flex items-center justify-center gap-2 disabled:opacity-50">
+      {state === "busy" ? <Loader2 className="size-4 animate-spin" /> : <Share2 className="size-4" />}
+      {state === "copied" ? "Havola nusxalandi" : state === "failed" ? "Bu brauzerda ulashib bo'lmadi — yuklab oling" : "Ulashish (Telegram, Instagram…)"}
     </button>
   );
 }
