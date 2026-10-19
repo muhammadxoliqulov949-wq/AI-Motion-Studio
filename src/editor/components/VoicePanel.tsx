@@ -1,13 +1,15 @@
 "use client";
 
 import { Loader2, Mic, TriangleAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { saveMedia } from "../media-store";
 import { addTrack, insertClip, makeMediaClip } from "../ops";
 import { computePeaks } from "../sample-media";
 import { useEditor } from "../store";
 import { round, uid } from "../utils";
-import { speak } from "../catalog/voices";
+import { stripEmotionTags } from "../catalog/emotions";
+import { speakEmotional } from "../emotional-speech";
+import { EmotionTagBar, insertTag } from "./EmotionTagBar";
 import { Chips, Section, Slider } from "./ui";
 import { VoicePicker } from "./VoicePicker";
 
@@ -29,6 +31,7 @@ export function VoicePanel() {
   const [speed, setSpeed] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (selected?.type === "text" && !text) setText(selected.text);
@@ -38,13 +41,15 @@ export function VoicePanel() {
     setBusy(true);
     setError(null);
     try {
-      const blob = await speak({ text, voice, speed, style });
+      // Text may contain [emotion] tags; each tagged part is voiced in its own style.
+      const { blob } = await speakEmotional({ text, voice, speed, style });
+      const label = stripEmotionTags(text);
       const ctx = new AudioContext();
       const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
       void ctx.close();
       const asset = {
         id: uid("voice"),
-        name: `Ovoz: ${text.slice(0, 28)}${text.length > 28 ? "…" : ""}`,
+        name: `Ovoz: ${label.slice(0, 28)}${label.length > 28 ? "…" : ""}`,
         kind: "audio" as const,
         duration: decoded.duration,
         src: URL.createObjectURL(blob),
@@ -83,14 +88,16 @@ export function VoicePanel() {
       </div>
       <Section title="Matn">
         <textarea
+          ref={textRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={5}
           maxLength={1500}
-          placeholder="Masalan: Bugun sizga Toshkentning eng chiroyli joylarini ko'rsataman…"
+          placeholder="Masalan: [excited] Bugun sizga Toshkentning eng chiroyli joylarini ko'rsataman! [pause] [calm] Boshladik…"
           className="w-full rounded-lg bg-black/40 ring-1 ring-white/10 focus:ring-cyan-300/70 outline-none p-2.5 text-sm text-white resize-none"
         />
         <div className="text-right text-[10px] text-white/30">{text.length}/1500</div>
+        <EmotionTagBar onInsert={(tag) => insertTag(textRef, text, setText, tag)} />
       </Section>
       <Section title="Ovoz">
         <VoicePicker value={voice} onChange={setVoice} compact />

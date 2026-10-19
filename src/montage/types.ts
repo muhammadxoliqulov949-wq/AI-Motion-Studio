@@ -75,6 +75,8 @@ export const GenerateMontageRequestSchema = z.object({
   topic: z.string().trim().min(3).max(500),
   aspect: z.enum(["9:16", "16:9"]).default("9:16"),
   targetSeconds: z.number().int().min(10).max(90).default(30),
+  /** Let the director put [emotion] tags into the narration (only the editor's script flow voices them). */
+  emotions: z.boolean().default(false),
 });
 
 export type GenerateMontageRequest = z.input<typeof GenerateMontageRequestSchema>;

@@ -63,7 +63,10 @@ export interface SpeakOptions {
   text: string;
   voice: string;
   speed?: number;
+  /** Delivery hint for OpenAI voices (also used for the base "Uslub" of the voiceover). */
   style?: string;
+  /** Azure prosody offsets in percent (rate, pitch, volume). */
+  prosody?: { rate?: number; pitch?: number; volume?: number };
   signal?: AbortSignal;
 }
 
@@ -77,11 +80,11 @@ export class TtsError extends Error {
 }
 
 /** Calls /api/tts and returns the MP3. */
-export const speak = async ({ text, voice, speed = 1, style = "", signal }: SpeakOptions): Promise<Blob> => {
+export const speak = async ({ text, voice, speed = 1, style = "", prosody, signal }: SpeakOptions): Promise<Blob> => {
   const res = await fetch("/api/tts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, voice: normalizeVoiceId(voice), speed, style }),
+    body: JSON.stringify({ text, voice: normalizeVoiceId(voice), speed, style, ...(prosody ? { prosody } : {}) }),
     signal,
   });
   if (!res.ok) {

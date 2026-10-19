@@ -9,7 +9,8 @@ import { experimental_generateSpeech as generateSpeech } from "ai";
  * GET reports which providers are configured so the UI only offers voices that will work.
  */
 
-const RATE_LIMIT = { name: "tts", limit: 60, windowMs: 10 * 60 * 1000 };
+// A script video with emotion tags makes one call per tagged segment (~25 per video).
+const RATE_LIMIT = { name: "tts", limit: 150, windowMs: 10 * 60 * 1000 };
 const MAX_TEXT = 1500;
 const OPENAI_VOICES = new Set(["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"]);
 /** Azure voice names look like "uz-UZ-MadinaNeural". */
@@ -27,12 +28,22 @@ export function GET() {
 
 const escapeXml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 
-/** Speed 0.5–2 → SSML prosody rate ("-30%", "+25%"). */
-const ssmlRate = (speed: number) => `${speed >= 1 ? "+" : ""}${Math.round((speed - 1) * 100)}%`;
+/** Relative SSML value: 12 → "+12%", -8 → "-8%". */
+const pct = (n: number) => `${n >= 0 ? "+" : ""}${Math.round(n)}%`;
+const clampN = (v: unknown, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : 0);
 
-async function azureSpeech(text: string, voice: string, speed: number, cfg: { key: string; region: string }) {
+/** Emotion → prosody offsets in percent (rate, pitch, volume), validated before they reach the SSML. */
+interface Prosody {
+  rate: number;
+  pitch: number;
+  volume: number;
+}
+
+async function azureSpeech(text: string, voice: string, speed: number, prosody: Prosody, cfg: { key: string; region: string }) {
   const lang = voice.split("-").slice(0, 2).join("-");
-  const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang}"><voice name="${voice}"><prosody rate="${ssmlRate(speed)}">${escapeXml(text)}</prosody></voice></speak>`;
+  // Speed (0.5–2) and the emotion's rate offset combine into one relative rate.
+  const rate = (speed - 1) * 100 + prosody.rate;
+  const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang}"><voice name="${voice}"><prosody rate="${pct(Math.max(-60, Math.min(100, rate)))}" pitch="${pct(prosody.pitch)}" volume="${pct(prosody.volume)}">${escapeXml(text)}</prosody></voice></speak>`;
   const res = await fetch(`https://${cfg.region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
     method: "POST",
     headers: {
@@ -52,7 +63,7 @@ export async function POST(req: Request) {
   const limited = await rateLimit(req, RATE_LIMIT);
   if (!limited.ok) return rateLimitedResponse(limited);
 
-  let body: { text?: unknown; voice?: unknown; speed?: unknown; style?: unknown };
+  let body: { text?: unknown; voice?: unknown; speed?: unknown; style?: unknown; prosody?: { rate?: unknown; pitch?: unknown; volume?: unknown } };
   try {
     body = await req.json();
   } catch {
@@ -64,7 +75,12 @@ export async function POST(req: Request) {
     return Response.json({ error: `Matn juda uzun (ko'pi bilan ${MAX_TEXT} belgi)`, code: "too_large" }, { status: 413 });
   }
   const speed = typeof body.speed === "number" ? Math.min(2, Math.max(0.5, body.speed)) : 1;
-  const style = typeof body.style === "string" ? body.style.slice(0, 200) : "";
+  const style = typeof body.style === "string" ? body.style.slice(0, 300) : "";
+  const prosody: Prosody = {
+    rate: clampN(body.prosody?.rate, -40, 40),
+    pitch: clampN(body.prosody?.pitch, -20, 20),
+    volume: clampN(body.prosody?.volume, -50, 30),
+  };
   // "provider:name"; a bare name is an OpenAI voice (older clients).
   const raw = typeof body.voice === "string" ? body.voice : "openai:nova";
   const [provider, name] = raw.includes(":") ? [raw.slice(0, raw.indexOf(":")), raw.slice(raw.indexOf(":") + 1)] : ["openai", raw];
@@ -79,7 +95,7 @@ export async function POST(req: Request) {
     }
     if (!AZURE_VOICE.test(name)) return Response.json({ error: "Noma'lum ovoz", code: "bad_request" }, { status: 400 });
     try {
-      return audioResponse(await azureSpeech(text, name, speed, cfg));
+      return audioResponse(await azureSpeech(text, name, speed, prosody, cfg));
     } catch (err) {
       console.error("Azure TTS failed:", err);
       return Response.json({ error: err instanceof Error ? err.message : "Ovoz yaratilmadi", code: "model_error" }, { status: 502 });
