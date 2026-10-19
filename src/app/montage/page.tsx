@@ -3,16 +3,16 @@
 import { Loader2 } from "lucide-react";
 import dynamic from "next/dynamic";
 
-// Uses browser-only APIs (Web Audio for voice durations, object URLs), so skip SSR.
-const MontageStudio = dynamic(() => import("@/montage/MontageStudio"), {
+// The studio uses browser-only APIs (IndexedDB, WebCodecs, object URLs), so skip SSR.
+const StudioApp = dynamic(() => import("@/gen/components/StudioApp"), {
   ssr: false,
   loading: () => (
     <div className="h-dvh grid place-items-center bg-[#09090b]">
-      <Loader2 className="size-6 text-yellow-300 animate-spin" />
+      <Loader2 className="size-6 text-fuchsia-300 animate-spin" />
     </div>
   ),
 });
 
 export default function MontagePage() {
-  return <MontageStudio />;
+  return <StudioApp />;
 }

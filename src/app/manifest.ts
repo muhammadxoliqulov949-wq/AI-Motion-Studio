@@ -21,7 +21,7 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: "Editor", url: "/editor" },
-      { name: "AI Montaj", url: "/montage" },
+      { name: "AI Studio", url: "/montage" },
     ],
   };
 }
