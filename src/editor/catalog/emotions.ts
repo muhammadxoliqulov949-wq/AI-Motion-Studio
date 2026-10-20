@@ -1,19 +1,14 @@
 /**
  * Emotion tags for voiceovers, ElevenLabs style: "[excited] Bugun katta yangilik! [pause] [whispers] Hech kimga aytmang."
  * A tag colours the text that follows it, up to the next tag; [neutral] resets. Tags can be stacked
- * ("[sad][slow]"). [pause] / [pause 1.5s] inserts silence. Unknown tags are passed to the model as a
- * free-form delivery hint (e.g. "[sarcastically]").
+ * ("[sad][slow]"). [pause] / [pause 1.5s] inserts silence.
  *
- * How a style is voiced depends on the provider:
- * - OpenAI gpt-4o-mini-tts follows the `instruction` text (best for English / Russian, decent in Uzbek);
- * - Azure neural voices (incl. Uzbek) have no emotion styles for uz-UZ, so rate / pitch / volume
- *   (prosody) approximate the mood.
+ * A style is voiced with prosody: rate / pitch / volume offsets (Microsoft neural voices have no
+ * emotion styles for Uzbek, so these approximate the mood). Unknown tags are ignored.
  */
 
 export interface EmotionStyle {
-  /** Natural-language delivery hint for OpenAI. */
-  instruction?: string;
-  /** Azure prosody offsets in percent (relative to the voice default). */
+  /** Prosody offsets in percent (relative to the voice default). */
   rate?: number;
   pitch?: number;
   volume?: number;
@@ -30,18 +25,18 @@ interface EmotionDef {
 }
 
 export const EMOTIONS: EmotionDef[] = [
-  { id: "excited", label: "Hayajonli", aliases: ["hayajonli", "hayajon", "enthusiastic", "energetic", "energik"], style: { instruction: "Excited, energetic and enthusiastic, with a bright smile in the voice.", rate: 10, pitch: 8, volume: 8 } },
-  { id: "cheerful", label: "Quvnoq", aliases: ["quvnoq", "xursand", "happy", "cheerful", "smiling"], style: { instruction: "Cheerful, warm and friendly, smiling while speaking.", rate: 5, pitch: 5 } },
-  { id: "calm", label: "Sokin", aliases: ["sokin", "tinch", "relaxed", "soft", "gentle"], style: { instruction: "Calm, soft and relaxed, unhurried and soothing.", rate: -12, pitch: -3, volume: -8 } },
-  { id: "serious", label: "Jiddiy", aliases: ["jiddiy", "firm", "confident", "authoritative"], style: { instruction: "Serious, firm and confident, with a lower pitch and steady pace.", rate: -5, pitch: -6 } },
-  { id: "sad", label: "G'amgin", aliases: ["xafa", "g'amgin", "gamgin", "melancholic", "sorrowful"], style: { instruction: "Sad, quiet and heavy-hearted, slow and low in energy.", rate: -16, pitch: -9, volume: -12 } },
-  { id: "angry", label: "G'azabli", aliases: ["jahl", "g'azab", "g'azabli", "furious", "annoyed"], style: { instruction: "Angry, intense and sharp, clipped words, raised intensity.", rate: 6, pitch: 3, volume: 18 } },
-  { id: "whisper", label: "Pichirlab", aliases: ["whispers", "whispering", "whispered", "pichirlab", "pichirlash", "pichirla"], style: { instruction: "Whispering softly and intimately, almost breathless.", rate: -10, volume: -35 } },
-  { id: "curious", label: "Qiziquvchan", aliases: ["qiziquvchan", "qiziqish", "intrigued", "questioning", "wondering"], style: { instruction: "Curious and inquisitive, with rising, playful intonation.", rate: 2, pitch: 5 } },
-  { id: "dramatic", label: "Dramatik", aliases: ["dramatik", "suspenseful", "mysterious", "sirli"], style: { instruction: "Dramatic and suspenseful, slow, with weight on key words.", rate: -14, pitch: -4, volume: 4 } },
-  { id: "laugh", label: "Kulib", aliases: ["laughs", "laughing", "kulib", "kulgi", "laughs lightly", "chuckles"], style: { instruction: "Speaking with a light laugh in the voice, amused.", rate: 4, pitch: 6 } },
-  { id: "slow", label: "Sekin", aliases: ["sekin", "slowly"], style: { instruction: "Speak slowly and deliberately, with clear pauses between phrases.", rate: -22 } },
-  { id: "fast", label: "Tez", aliases: ["tez", "quickly", "rushed"], style: { instruction: "Speak quickly and briskly, with a fast, energetic pace.", rate: 22 } },
+  { id: "excited", label: "Hayajonli", aliases: ["hayajonli", "hayajon", "enthusiastic", "energetic", "energik"], style: { rate: 10, pitch: 8, volume: 8 } },
+  { id: "cheerful", label: "Quvnoq", aliases: ["quvnoq", "xursand", "happy", "cheerful", "smiling"], style: { rate: 5, pitch: 5 } },
+  { id: "calm", label: "Sokin", aliases: ["sokin", "tinch", "relaxed", "soft", "gentle"], style: { rate: -12, pitch: -3, volume: -8 } },
+  { id: "serious", label: "Jiddiy", aliases: ["jiddiy", "firm", "confident", "authoritative"], style: { rate: -5, pitch: -6 } },
+  { id: "sad", label: "G'amgin", aliases: ["xafa", "g'amgin", "gamgin", "melancholic", "sorrowful"], style: { rate: -16, pitch: -9, volume: -12 } },
+  { id: "angry", label: "G'azabli", aliases: ["jahl", "g'azab", "g'azabli", "furious", "annoyed"], style: { rate: 6, pitch: 3, volume: 18 } },
+  { id: "whisper", label: "Pichirlab", aliases: ["whispers", "whispering", "whispered", "pichirlab", "pichirlash", "pichirla"], style: { rate: -10, volume: -35 } },
+  { id: "curious", label: "Qiziquvchan", aliases: ["qiziquvchan", "qiziqish", "intrigued", "questioning", "wondering"], style: { rate: 2, pitch: 5 } },
+  { id: "dramatic", label: "Dramatik", aliases: ["dramatik", "suspenseful", "mysterious", "sirli"], style: { rate: -14, pitch: -4, volume: 4 } },
+  { id: "laugh", label: "Kulib", aliases: ["laughs", "laughing", "kulib", "kulgi", "laughs lightly", "chuckles"], style: { rate: 4, pitch: 6 } },
+  { id: "slow", label: "Sekin", aliases: ["sekin", "slowly"], style: { rate: -22 } },
+  { id: "fast", label: "Tez", aliases: ["tez", "quickly", "rushed"], style: { rate: 22 } },
 ];
 
 const NEUTRAL_TAGS = new Set(["neutral", "normal", "tabiiy", "oddiy", "reset"]);
@@ -63,7 +58,6 @@ export const hasEmotionTags = (text: string) => /\[[^[\]]{1,60}\]/.test(text);
 export const stripEmotionTags = (text: string) => text.replace(TAG_RE, " ").replace(/\s+([,.!?;:…])/g, "$1").replace(/\s+/g, " ").trim();
 
 const merge = (a: EmotionStyle, b: EmotionStyle): EmotionStyle => ({
-  instruction: [a.instruction, b.instruction].filter(Boolean).join(" ") || undefined,
   rate: b.rate ?? a.rate,
   pitch: b.pitch ?? a.pitch,
   volume: b.volume ?? a.volume,
@@ -101,7 +95,7 @@ export const parseEmotionText = (text: string): SpeechPart[] => {
         spoken = false;
       }
       const known = byAlias.get(tag);
-      style = merge(style, known ? known.style : { instruction: `Delivery: ${tag.slice(0, 50)}.` });
+      style = merge(style, known ? known.style : {});
       tags = [...tags, known?.id ?? tag];
     }
   }
@@ -111,3 +105,12 @@ export const parseEmotionText = (text: string): SpeechPart[] => {
 
 /** The vocabulary the AI director may use (kept short so it stays consistent). */
 export const DIRECTOR_TAGS = EMOTIONS.map((e) => e.id).join(", ");
+
+/** Base delivery of the whole voiceover ("Uslub" chips); the emotion tags add their offsets on top. */
+export const BASE_STYLES: Record<string, EmotionStyle> = {
+  "": {},
+  documentary: { rate: -10, pitch: -3 },
+  energetic: { rate: 12, pitch: 4, volume: 6 },
+  news: { rate: 2, pitch: -2 },
+  ad: { rate: 6, pitch: 3, volume: 4 },
+};

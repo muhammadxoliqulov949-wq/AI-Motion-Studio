@@ -8,6 +8,7 @@ import { computePeaks } from "../sample-media";
 import { useEditor } from "../store";
 import { round, uid } from "../utils";
 import { stripEmotionTags } from "../catalog/emotions";
+import { DEFAULT_VOICE_ID } from "../catalog/voices";
 import { speakEmotional } from "../emotional-speech";
 import { EmotionTagBar, insertTag } from "./EmotionTagBar";
 import { Chips, Section, Slider } from "./ui";
@@ -15,10 +16,10 @@ import { VoicePicker } from "./VoicePicker";
 
 const STYLES: [string, string][] = [
   ["", "Tabiiy"],
-  ["Calm, warm and slow, like a documentary narrator.", "Hujjatli film"],
-  ["Energetic, upbeat and fast, like a TikTok creator.", "Energik"],
-  ["Confident and clear, like a news anchor.", "Yangiliklar"],
-  ["Friendly and persuasive, like a product advertisement.", "Reklama"],
+  ["documentary", "Hujjatli film"],
+  ["energetic", "Energik"],
+  ["news", "Yangiliklar"],
+  ["ad", "Reklama"],
 ];
 
 /** Generates a voiceover with AI and places it on a dedicated "Ovoz" audio track. */
@@ -26,7 +27,7 @@ export function VoicePanel() {
   const { project, selectedId, commit, addAssets, playhead } = useEditor();
   const selected = project.clips.find((c) => c.id === selectedId);
   const [text, setText] = useState("");
-  const [voice, setVoice] = useState("openai:nova");
+  const [voice, setVoice] = useState(DEFAULT_VOICE_ID);
   const [style, setStyle] = useState("");
   const [speed, setSpeed] = useState(1);
   const [busy, setBusy] = useState(false);

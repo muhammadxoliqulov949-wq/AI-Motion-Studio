@@ -4,7 +4,15 @@ export const MONTAGE_FPS = 30;
 
 export const ANIMATION_TYPES = ["fade", "slide", "pop"] as const;
 export const SFX_TYPES = ["whoosh", "pop", "click", "swoosh"] as const;
-export const TTS_VOICES = ["alloy", "nova", "onyx", "shimmer", "echo", "fable"] as const;
+export const TTS_VOICES = ["uz-UZ-MadinaNeural", "uz-UZ-SardorNeural", "ru-RU-SvetlanaNeural", "ru-RU-DmitryNeural", "en-US-JennyNeural", "en-US-GuyNeural"] as const;
+export const TTS_VOICE_LABELS: Record<(typeof TTS_VOICES)[number], string> = {
+  "uz-UZ-MadinaNeural": "Madina (o'zbek)",
+  "uz-UZ-SardorNeural": "Sardor (o'zbek)",
+  "ru-RU-SvetlanaNeural": "Svetlana (rus)",
+  "ru-RU-DmitryNeural": "Dmitriy (rus)",
+  "en-US-JennyNeural": "Jenny (ingliz)",
+  "en-US-GuyNeural": "Guy (ingliz)",
+};
 
 export type AnimationType = (typeof ANIMATION_TYPES)[number];
 export type SfxType = (typeof SFX_TYPES)[number];
@@ -83,7 +91,7 @@ export type GenerateMontageRequest = z.input<typeof GenerateMontageRequestSchema
 
 export const VoiceRequestSchema = z.object({
   text: z.string().trim().min(1).max(600),
-  voice: z.enum(TTS_VOICES).default("nova"),
+  voice: z.enum(TTS_VOICES).default("uz-UZ-MadinaNeural"),
 });
 
 export interface ApiError {

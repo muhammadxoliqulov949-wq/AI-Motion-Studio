@@ -24,20 +24,20 @@ export const useVoices = (value: string, onChange: (id: string) => void) => {
       if (!alive) return;
       setCaps(c);
       // Move off a voice the server cannot serve (e.g. the old default when only Azure is set up).
-      const usable = usableVoices(c);
-      if (!usable.some((v) => v.id === normalizeVoiceId(value))) onChange(defaultVoice(c));
+      const usable = usableVoices();
+      if (!usable.some((v) => v.id === normalizeVoiceId(value))) onChange(defaultVoice());
     });
     return () => {
       alive = false;
     };
     // Runs once: later changes of `value` must not reset the user's choice.
   }, []);
-  return { caps, voices: usableVoices(caps) };
+  return { caps, voices: usableVoices() };
 };
 
 /** Voice list grouped by language with a "tinglab ko'rish" button on each row. */
 export function VoicePicker({ value, onChange, compact = false }: { value: string; onChange: (id: string) => void; compact?: boolean }) {
-  const { caps, voices } = useVoices(value, onChange);
+  const { voices } = useVoices(value, onChange);
   const [playing, setPlaying] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,17 +65,9 @@ export function VoicePicker({ value, onChange, compact = false }: { value: strin
   };
 
   const groups = [...new Set(voices.map((v) => v.lang))];
-  const uzbekNative = !!caps?.azure;
 
   return (
     <div className="space-y-2.5">
-      {caps && !uzbekNative && (
-        <div className="flex gap-2 rounded-lg px-3 py-2 text-[10.5px] bg-sky-500/10 text-sky-200/90 ring-1 ring-sky-400/20 leading-relaxed">
-          <TriangleAlert className="size-3.5 shrink-0 mt-0.5" />
-          Haqiqiy o&apos;zbek ovozi (Madina, Sardor) uchun serverda AZURE_SPEECH_KEY va AZURE_SPEECH_REGION kerak (Azure AI Speech, oyiga 500 ming belgi bepul).{" "}
-          {caps.openai ? "Hozircha AI ovozlar ishlaydi." : "Hozir serverda hech qanday ovoz kaliti yo'q — video ovozsiz (faqat subtitr) chiqadi."}
-        </div>
-      )}
       {groups.map((lang) => (
         <div key={lang}>
           <div className="text-[10px] font-semibold uppercase tracking-wider text-white/35 mb-1">{LANG_LABELS[lang]}</div>

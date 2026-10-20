@@ -2,12 +2,12 @@
 
 /**
  * Voices narration that contains emotion tags ("[excited] … [pause] [whispers] …").
- * Each spoken part is synthesised with its own style (OpenAI: delivery instruction, Azure: prosody),
+ * Each spoken part is synthesised with its own style (rate / pitch / volume offsets),
  * decoded, and joined with the requested pauses into one WAV. Plain text (no tags) is a single call
  * and stays an MP3. `cues` tell where each part starts and ends, so captions can follow the voice.
  */
-import { speak, voiceById, normalizeVoiceId, type SpeakOptions } from "./catalog/voices";
-import { hasEmotionTags, parseEmotionText, stripEmotionTags, type SpeechPart } from "./catalog/emotions";
+import { speak, type SpeakOptions } from "./catalog/voices";
+import { BASE_STYLES, hasEmotionTags, parseEmotionText, stripEmotionTags, type EmotionStyle, type SpeechPart } from "./catalog/emotions";
 
 export interface SpeechCue {
   /** Text without tags. */
@@ -62,7 +62,11 @@ type Speech = Extract<SpeechPart, { kind: "speech" }>;
 
 export interface SpeakEmotionOptions extends Omit<SpeakOptions, "text" | "prosody"> {
   text: string;
+  /** Base delivery preset of the whole voiceover (key of BASE_STYLES). */
+  style?: string;
 }
+
+const addStyles = (a: EmotionStyle, b: EmotionStyle) => ({ rate: (a.rate ?? 0) + (b.rate ?? 0), pitch: (a.pitch ?? 0) + (b.pitch ?? 0), volume: (a.volume ?? 0) + (b.volume ?? 0) });
 
 /**
  * Narration with optional emotion tags → one audio file plus caption cues.
@@ -70,16 +74,16 @@ export interface SpeakEmotionOptions extends Omit<SpeakOptions, "text" | "prosod
  */
 export const speakEmotional = async ({ text, voice, speed = 1, style = "", signal }: SpeakEmotionOptions): Promise<SpokenAudio> => {
   const clean = stripEmotionTags(text);
+  const base = BASE_STYLES[style] ?? {};
 
   // No tags: one call, MP3, a single cue over the whole voice.
   if (!hasEmotionTags(text)) {
-    const blob = await speak({ text: clean, voice, speed, style, signal });
+    const blob = await speak({ text: clean, voice, speed, prosody: addStyles(base, {}), signal });
     const seconds = await duration(blob);
     return { blob, seconds, cues: [{ text: clean, start: 0, end: seconds }] };
   }
 
   const parts = parseEmotionText(text);
-  const provider = voiceById(normalizeVoiceId(voice))?.provider ?? "openai";
   const speech = parts.filter((p): p is Speech => p.kind === "speech");
   if (!speech.length) throw new Error("Teglardan boshqa matn yo'q");
 
@@ -95,9 +99,7 @@ export const speakEmotional = async ({ text, voice, speed = 1, style = "", signa
           text: part.text,
           voice,
           speed,
-          // OpenAI follows the delivery hint; Azure follows the prosody (it ignores the hint).
-          style: provider === "openai" ? [style, part.style.instruction].filter(Boolean).join(" ") : style,
-          prosody: provider === "azure" ? { rate: part.style.rate, pitch: part.style.pitch, volume: part.style.volume } : undefined,
+          prosody: addStyles(base, part.style),
           signal,
         });
       }
