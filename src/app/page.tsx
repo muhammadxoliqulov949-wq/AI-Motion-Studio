@@ -36,11 +36,11 @@ const MODULES = [
     accent: "from-violet-500 to-fuchsia-500",
   },
   {
-    title: "AI Montaj",
+    title: "AI Studio",
     status: "Yangi",
     href: "/montage",
     icon: Wand2,
-    desc: "Bitta mavzu yozing — AI ssenariy, fon videolar, ovoz, subtitr, shrift va tovush effektlari bilan tayyor video yig'adi.",
+    desc: "Matndan rasm yarating va uni kamera harakati bilan videoga aylantiring: 15 ta kamera preseti, effektlar, ranglar. Pullik AI video modellari (Wan, Seedance, Veo…) ham ulangan.",
     accent: "from-yellow-400 to-orange-500",
   },
   {

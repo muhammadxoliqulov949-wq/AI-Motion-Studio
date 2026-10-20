@@ -7,7 +7,9 @@
  */
 import type { MontagePlan } from "@/montage/types";
 import { applyBrandKit, type BrandKit, logoAsset } from "./brand-kit";
-import { speak, TtsError } from "./catalog/voices";
+import { stripEmotionTags } from "./catalog/emotions";
+import { TtsError } from "./catalog/voices";
+import { type SpeechCue, speakEmotional } from "./emotional-speech";
 import { applyOps, type EditOp } from "./edit-ops";
 import { saveMedia } from "./media-store";
 import { addTrack, insertClip, makeMediaClip, makeTextClip, templatePatch } from "./ops";
@@ -71,13 +73,13 @@ const providerOf = (pageUrl: string): ScriptFootage["provider"] => (/pexels\.com
 // ---------- Script ----------
 
 /** Asks the AI director for scenes (script, on-screen text, stock query, footage). */
-export const requestScript = async (topic: string, aspect: ScriptAspect, targetSeconds: number): Promise<ScriptDraft> => {
+export const requestScript = async (topic: string, aspect: ScriptAspect, targetSeconds: number, emotions = false): Promise<ScriptDraft> => {
   let res: Response;
   try {
     res = await fetch("/api/generate-montage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, aspect, targetSeconds }),
+      body: JSON.stringify({ topic, aspect, targetSeconds, emotions }),
     });
   } catch {
     throw new ScriptError("Serverga ulanib bo'lmadi.", "network");
@@ -231,6 +233,8 @@ const decode = async (blob: Blob) => {
 interface Voiced {
   asset: MediaAsset;
   seconds: number;
+  /** Where each tagged part is spoken (tag-free text), for caption timing. */
+  cues: SpeechCue[];
 }
 
 /** Runs `fn` over `items` with at most `limit` in flight; keeps result order. */
@@ -260,9 +264,11 @@ export const buildScriptVideo = async (input: BuildInput): Promise<BuildResult> 
   if (input.voice !== "none") {
     let voiceDown = false;
     await pool(scenes, 3, async (scene, i) => {
-      if (!scene.narration.trim() || voiceDown) return tick("Ovozlar yaratilmoqda…");
+      if (!stripEmotionTags(scene.narration) || voiceDown) return tick("Ovozlar yaratilmoqda…");
       try {
-        const blob = await speak({ text: scene.narration, voice: input.voice, speed: input.voiceSpeed });
+        // Narration may carry [emotion] tags: each tagged part is voiced in its own style.
+        const spoken = await speakEmotional({ text: scene.narration, voice: input.voice, speed: input.voiceSpeed });
+        const blob = spoken.blob;
         const buf = await decode(blob);
         const asset: MediaAsset = {
           id: uid("voice"),
@@ -275,7 +281,7 @@ export const buildScriptVideo = async (input: BuildInput): Promise<BuildResult> 
           origin: "voice",
         };
         void saveMedia(asset, blob);
-        voiced[i] = { asset, seconds: buf.duration };
+        voiced[i] = { asset, seconds: buf.duration, cues: spoken.cues };
       } catch (err) {
         if (err instanceof TtsError && (err.code === "no_api_key" || err.code === "rate_limited")) voiceDown = true;
         if (!warnings.some((w) => w.startsWith("Ovoz"))) warnings.push(`Ovoz yaratilmadi (${(err as Error).message}) — shu kadrlar faqat subtitr bilan.`);
@@ -360,21 +366,25 @@ export const buildScriptVideo = async (input: BuildInput): Promise<BuildResult> 
     if (v && voiceTrack) {
       project = insertClip(project, makeMediaClip(addAsset(v.asset), voiceTrack.track.id, voiceStart, { volume: 1, fadeIn: 0, fadeOut: 0.05 }), ["audio"], voiceTrack.track.id);
     }
-    const phrases = splitPhrases(scene.narration || scene.text);
-    const weight = phrases.map((p) => Math.max(8, p.length));
-    const sum = weight.reduce((s, w) => s + w, 0);
-    let t = voiceStart;
-    phrases.forEach((text, k) => {
-      const len = (weight[k] / sum) * speakLen;
-      project = {
-        ...project,
-        clips: [
-          ...project.clips,
-          makeTextClip(round(t, 3), { ...templatePatch(input.captionStyle), trackId: "T2", text, duration: round(Math.max(0.4, len - 0.02), 3) }),
-        ],
-      };
-      t += len;
-    });
+    // Captions: short phrases timed inside each spoken part (tags never reach the screen).
+    const cues: SpeechCue[] = v ? v.cues : [{ text: stripEmotionTags(scene.narration) || stripEmotionTags(scene.text), start: 0, end: speakLen }];
+    for (const cue of cues) {
+      const phrases = splitPhrases(cue.text);
+      const weight = phrases.map((p) => Math.max(8, p.length));
+      const sum = weight.reduce((a, w) => a + w, 0) || 1;
+      let t = voiceStart + cue.start;
+      phrases.forEach((text, k) => {
+        const len = (weight[k] / sum) * (cue.end - cue.start);
+        project = {
+          ...project,
+          clips: [
+            ...project.clips,
+            makeTextClip(round(t, 3), { ...templatePatch(input.captionStyle), trackId: "T2", text, duration: round(Math.max(0.4, len - 0.02), 3) }),
+          ],
+        };
+        t += len;
+      });
+    }
     at += sceneLen;
   });
 

@@ -1,3 +1,4 @@
+import { DIRECTOR_TAGS } from "@/editor/catalog/emotions";
 import { ANIMATION_TYPES, MONTAGE_FPS, SFX_TYPES, type MontageAspect } from "../types";
 
 export const MONTAGE_SYSTEM_PROMPT = `You are the director of "AI Motion Studio". From a single topic you write a short, punchy social video: script, scenes, on-screen text, stock-footage searches and sound design. The app turns your JSON into a real video with Remotion.
@@ -18,9 +19,18 @@ export const MONTAGE_SYSTEM_PROMPT = `You are the director of "AI Motion Studio"
 - Write in the same language as the topic (Uzbek topic → Uzbek text and narration; English topic → English).
 - Respect the requested total length; the sum of durationInFrames should be within ±15% of it.`;
 
-export const buildUserPrompt = (topic: string, aspect: MontageAspect, targetSeconds: number) =>
+/** Added to the prompt when the caller can voice [emotion] tags (the editor's script flow). */
+export const EMOTION_PROMPT = `## Emotion tags in the narration
+The voiceover engine understands inline tags in square brackets. A tag sets how the text AFTER it is spoken, until the next tag. Use them to make the delivery feel human:
+- Allowed tags: ${DIRECTOR_TAGS}, neutral (reset) and pause (silence; "[pause 1s]" for a specific length).
+- Put the tag directly before the words it colours, e.g. "[excited] Bugun katta yangilik! [pause] [calm] Keling, birgalikda ko'ramiz."
+- Use 1–3 tags per scene, matched to meaning: an excited hook, a calm explanation, a whispered secret, a serious warning, a curious question. Do not tag every sentence and never stack more than two tags.
+- Tags are ONLY for "narration" (and the joined "voice_script"). Never put tags in the on-screen "text". Write the tags in English even when the narration is Uzbek.`;
+
+export const buildUserPrompt = (topic: string, aspect: MontageAspect, targetSeconds: number, emotions = false) =>
   [
     `Topic: ${topic}`,
     `Format: ${aspect === "9:16" ? "vertical 9:16 (Reels / TikTok / Shorts)" : "horizontal 16:9 (YouTube)"}`,
     `Target length: about ${targetSeconds} seconds (${targetSeconds * MONTAGE_FPS} frames total).`,
+    ...(emotions ? ["", EMOTION_PROMPT] : []),
   ].join("\n");

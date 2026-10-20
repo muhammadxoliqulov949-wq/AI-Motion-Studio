@@ -7,6 +7,7 @@ import { useBrandKit } from "../brand-kit";
 import { buildScriptVideo, findSceneFootage, newScene, requestScript, type MusicMood, ScriptError, type ScriptAspect, type ScriptDraft, type ScriptScene, templateScript } from "../script-video";
 import { useEditor } from "../store";
 import { formatShort } from "../utils";
+import { EmotionTagBar, insertTag } from "./EmotionTagBar";
 import { VoicePicker } from "./VoicePicker";
 
 const EXAMPLES = ["Toshkentdagi 5 ta eng chiroyli joy", "Kofe tayyorlashning sirlari", "Telefoningiz batareyasini tejash bo'yicha 5 maslahat", "Yangi kofexonamiz ochildi"];
@@ -54,7 +55,7 @@ export function ScriptVideo({ onBack, onDone, onOpenAi, onBrand }: { onBack: () 
     setError(null);
     setNotice(null);
     try {
-      setDraft(await requestScript(topic.trim(), aspect, seconds));
+      setDraft(await requestScript(topic.trim(), aspect, seconds, true));
     } catch (err) {
       const code = err instanceof ScriptError ? err.code : "network";
       // No AI available: the user still gets editable scenes built around the topic.
@@ -247,6 +248,9 @@ export function ScriptVideo({ onBack, onDone, onOpenAi, onBrand }: { onBack: () 
       </button>
       <h2 className="mt-2 text-[20px] sm:text-[24px] font-bold text-white font-display pr-10">Ssenariyni tekshiring</h2>
       <p className="text-[12.5px] text-white/50 mt-1">Har bir kartani tahrirlang: matn, ovoz uchun gap, kadr. Keyin «Video yasash».</p>
+      <p className="mt-1.5 text-[11.5px] text-violet-200/80 leading-relaxed">
+        🎭 Ovoz hissiyoti: gap oldiga <span className="font-mono text-violet-100">[excited]</span>, <span className="font-mono text-violet-100">[calm]</span>, <span className="font-mono text-violet-100">[whisper]</span>, <span className="font-mono text-violet-100">[pause 1s]</span> kabi teg yozing yoki tugmalarni bosing — keyingi matn shu ohangda o&apos;qiladi.
+      </p>
 
       {notice && (
         <div className="mt-3 flex gap-2 rounded-lg px-3 py-2 text-[12px] bg-amber-500/10 text-amber-200/90 ring-1 ring-amber-400/20">
@@ -370,6 +374,7 @@ function SceneCard({
   const [finding, setFinding] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const narrationRef = useRef<HTMLTextAreaElement>(null);
   const ib = "size-7 grid place-items-center rounded-md text-white/45 hover:text-white hover:bg-white/10 disabled:opacity-25 disabled:hover:bg-transparent";
 
   const find = async (next: boolean) => {
@@ -435,12 +440,14 @@ function SceneCard({
         </div>
         <div className="min-w-0 space-y-2">
           <textarea
+            ref={narrationRef}
             value={scene.narration}
             onChange={(e) => onChange({ narration: e.target.value })}
             rows={3}
-            placeholder="Ovoz nima deydi (subtitr ham shundan olinadi)"
+            placeholder="Ovoz nima deydi (subtitr ham shundan olinadi). Hissiyot: [excited] …"
             className="w-full rounded-lg bg-black/40 ring-1 ring-white/10 focus:ring-cyan-300/70 outline-none p-2 text-[12.5px] text-white resize-none"
           />
+          <EmotionTagBar compact onInsert={(tag) => insertTag(narrationRef, scene.narration, (v) => onChange({ narration: v }), tag)} />
           <div className="flex gap-2">
             <input
               value={scene.query}

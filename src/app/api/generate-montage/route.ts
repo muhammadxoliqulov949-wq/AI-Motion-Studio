@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     const result = await generateObject({
       model: openai(process.env.MONTAGE_MODEL ?? "gpt-4o-mini"),
       system: MONTAGE_SYSTEM_PROMPT,
-      prompt: buildUserPrompt(input.topic, input.aspect, input.targetSeconds),
+      prompt: buildUserPrompt(input.topic, input.aspect, input.targetSeconds, input.emotions),
       schema: MontageScriptSchema,
       maxRetries: 1,
     });
