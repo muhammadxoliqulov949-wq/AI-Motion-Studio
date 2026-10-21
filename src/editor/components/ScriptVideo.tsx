@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowLeft, ArrowUp, Check, Film, Loader2, Palette, Plus, RefreshCw, Sparkles, Trash2, TriangleAlert, Wand2, Zap } from "lucide-react";
+import { DEFAULT_VOICE_ID } from "../catalog/voices";
 import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useBrandKit } from "../brand-kit";
@@ -43,7 +44,7 @@ export function ScriptVideo({ onBack, onDone, onOpenAi, onBrand }: { onBack: () 
   const [error, setError] = useState<string | null>(null);
   // Options
   const [voiceOn, setVoiceOn] = useState(true);
-  const [voice, setVoice] = useState("openai:nova");
+  const [voice, setVoice] = useState(DEFAULT_VOICE_ID);
   const [speed, setSpeed] = useState(1);
   const [captionStyle, setCaptionStyle] = useState("tiktok-caption");
   const [music, setMusic] = useState<MusicMood>("upbeat");

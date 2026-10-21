@@ -202,7 +202,7 @@ export interface BuildInput {
   title: string;
   scenes: ScriptScene[];
   aspect: ScriptAspect;
-  /** Voice id ("azure:…" / "openai:…") or "none" for captions only. */
+  /** Voice id ("edge:uz-UZ-MadinaNeural" …) or "none" for captions only. */
   voice: string;
   voiceSpeed: number;
   captionStyle: string;

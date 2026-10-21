@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { MontageApiError, releaseMontage, requestPlan, resolveMontage } from "./client";
 import { MONTAGE_SIZES, MontageComposition, totalFrames } from "./composition/MontageComposition";
 import { SAMPLE_MONTAGE } from "./sample";
-import { TTS_VOICES, type MontageAspect, type ResolvedMontage, type TtsVoice } from "./types";
+import { TTS_VOICES, TTS_VOICE_LABELS, type MontageAspect, type ResolvedMontage, type TtsVoice } from "./types";
 
 type Stage = "idle" | "script" | "voice" | "done" | "error";
 
@@ -40,7 +40,7 @@ export default function MontageStudio() {
   const [topic, setTopic] = useState("");
   const [aspect, setAspect] = useState<MontageAspect>("9:16");
   const [seconds, setSeconds] = useState(30);
-  const [voice, setVoice] = useState<TtsVoice>("nova");
+  const [voice, setVoice] = useState<TtsVoice>("uz-UZ-MadinaNeural");
   const [stage, setStage] = useState<Stage>("idle");
   const [voiceProgress, setVoiceProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
@@ -145,11 +145,11 @@ export default function MontageStudio() {
                     key={v}
                     onClick={() => setVoice(v)}
                     className={cn(
-                      "px-2.5 py-1 rounded-md text-[11px] capitalize ring-1 transition-colors",
+                      "px-2.5 py-1 rounded-md text-[11px] ring-1 transition-colors",
                       voice === v ? "bg-yellow-300/15 ring-yellow-300/60 text-white" : "ring-white/10 text-white/55 hover:text-white",
                     )}
                   >
-                    {v}
+                    {TTS_VOICE_LABELS[v]}
                   </button>
                 ))}
               </div>
@@ -239,7 +239,7 @@ function Segmented({ value, options, onChange, suffix = "" }: { value: string; o
 const STEPS = [
   { key: "script", label: "Ssenariy va kadrlar", detail: "OpenAI", icon: PenLine },
   { key: "footage", label: "Fon videolar", detail: "Pixabay", icon: Film },
-  { key: "voice", label: "Ovoz (TTS)", detail: "OpenAI", icon: AudioLines },
+  { key: "voice", label: "Ovoz (TTS)", detail: "Microsoft (bepul)", icon: AudioLines },
   { key: "mix", label: "Montaj va miks", detail: "Remotion", icon: Clapperboard },
 ] as const;
 
