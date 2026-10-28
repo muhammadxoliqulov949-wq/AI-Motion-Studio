@@ -11,7 +11,9 @@ import { type GenCaps, generateImage, generateVideo, imageSize, randomSeed, type
 import { downloadBlob, renderToMp4, stageForEditor, stageVideoForEditor } from "../export";
 import type { GenItem } from "../store";
 import type { GalleryItem } from "../useGallery";
+import { exampleImage, type GenExample } from "../examples";
 import { CameraGrid } from "./CameraGrid";
+import { ExampleStrip, RandomIdea } from "./Examples";
 import { FitPlayer } from "./FitPlayer";
 import { Chips, Field, fmtUsd, GhostButton, Notice, PrimaryButton, Range } from "./kit";
 import { ModeLayout } from "./ModeLayout";
@@ -158,6 +160,27 @@ export function VideoStudio({
     setError(null);
   };
 
+  /** A ready-made picture from the idea list: becomes the source, with a fitting camera move and motion text. */
+  const pickExample = async (e: GenExample) => {
+    setError(null);
+    try {
+      const res = await fetch(exampleImage(e));
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const { width, height } = await imageSize(blob);
+      replaceSource({ id: `ex-${e.id}`, blob, url: URL.createObjectURL(blob), width, height, name: e.title, owned: true });
+      setAspect(nearestAspect(width, height));
+      if (CAMERA_PRESETS.some((c) => c.id === e.camera)) setCamera(e.camera);
+      setPrompt(e.motion);
+      setDone(null);
+    } catch {
+      setError("Namuna rasmni yuklab bo'lmadi");
+    }
+  };
+
+  /** Text mode: an idea fills the scene description. */
+  const pickIdea = (e: GenExample) => setPrompt(e.prompt);
+
   const upload = async (file: File | undefined) => {
     if (!file || !file.type.startsWith("image/")) return;
     const { width, height } = await imageSize(file);
@@ -283,6 +306,7 @@ export function VideoStudio({
       </div>
 
       {inputMode === "image" ? (
+        <>
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void upload(e.target.files?.[0]).then(() => (e.target.value = ""))} />
           <button type="button" onClick={() => fileRef.current?.click()} className="shrink-0 size-[76px] rounded-xl border border-dashed border-white/20 hover:border-violet-400/70 grid place-items-center text-white/55 hover:text-white">
@@ -301,9 +325,16 @@ export function VideoStudio({
               <img src={i.url} alt="" className="size-full object-cover" />
             </button>
           ))}
-          {!imageList.length && !source && <p className="text-[11.5px] text-white/35 self-center pl-1">Galereya bo&apos;sh — rasm yuklang yoki «Rasm» bo&apos;limida yarating.</p>}
         </div>
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] text-white/45">Tayyor materiallar — bosing, darhol videoga aylantiring</span>
+          </div>
+          <ExampleStrip onPick={(e) => void pickExample(e)} active={source?.id.startsWith("ex-") ? source.id.slice(3) : null} />
+        </div>
+        </>
       ) : (
+        <>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
@@ -312,6 +343,14 @@ export function VideoStudio({
           placeholder="Masalan: a lone astronaut walking on a red desert planet at sunset"
           className="w-full rounded-2xl bg-white/[0.04] ring-1 ring-white/10 focus:ring-violet-400/70 outline-none p-3.5 text-[14px] text-white placeholder:text-white/30 resize-none"
         />
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] text-white/45">G&apos;oyalar — bosing, prompt tayyor</span>
+            <RandomIdea onPick={pickIdea} />
+          </div>
+          <ExampleStrip onPick={pickIdea} />
+        </div>
+        </>
       )}
     </Field>
   );

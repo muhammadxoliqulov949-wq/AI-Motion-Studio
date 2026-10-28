@@ -9,6 +9,8 @@ import { downloadBlob } from "../export";
 import { type GenCaps, GenError, generateImage, GEN_SIZES, randomSeed } from "../client";
 import type { GalleryItem } from "../useGallery";
 import type { GenItem } from "../store";
+import type { GenExample } from "../examples";
+import { ExampleGallery, ExampleStrip, PromptBoosters, RandomIdea } from "./Examples";
 import { Chips, Field, Notice, PrimaryButton, GhostButton } from "./kit";
 import { ModeLayout } from "./ModeLayout";
 
@@ -38,15 +40,6 @@ const ASPECTS: [AspectRatio, string][] = [
   ["16:9", "16:9 YouTube"],
   ["1:1", "1:1 Post"],
   ["4:5", "4:5 Portret"],
-];
-
-const EXAMPLES = [
-  "a red fox walking through a snowy forest at dawn",
-  "futuristic Tashkent skyline at sunset with flying cars",
-  "a cup of coffee on a wooden table, steam rising, morning light",
-  "an astronaut riding a horse on the moon",
-  "ancient Samarkand madrasa glowing at blue hour",
-  "a cozy cabin in the mountains, northern lights above",
 ];
 
 const sizeOf = (a: AspectRatio) => {
@@ -80,6 +73,7 @@ export function ImageStudio({
   const [wait, setWait] = useState(0);
   const [session, setSession] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
 
   // Count down after a "free limit" answer so the user knows when to retry.
@@ -138,6 +132,15 @@ export function ImageStudio({
     }
   };
 
+  /** Loads an idea: prompt, style and format in one go. */
+  const pickExample = (e: GenExample) => {
+    setPrompt(e.prompt);
+    setStyleId(STYLES.some((s) => s.id === e.style) ? e.style : "none");
+    setAspect(e.aspect);
+    setPicked(e.id);
+    setError(null);
+  };
+
   const canGenerate = prompt.trim().length >= 3 && !busy && wait <= 0;
 
   const controls = (
@@ -150,12 +153,22 @@ export function ImageStudio({
       <Field label="Nimani yaratamiz?" hint="Inglizcha yozsangiz natija ancha yaxshi chiqadi. Uslub tanlansa, tegishli so'zlar avtomatik qo'shiladi.">
         <textarea
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => {
+            setPrompt(e.target.value);
+            setPicked(null);
+          }}
           rows={4}
           maxLength={700}
           placeholder="Masalan: a red fox walking through a snowy forest at dawn"
           className="w-full rounded-2xl bg-white/[0.04] ring-1 ring-white/10 focus:ring-violet-400/70 outline-none p-3.5 text-[14px] text-white placeholder:text-white/30 resize-none"
         />
+        <div className="mt-2.5">
+          <PromptBoosters prompt={prompt} onChange={setPrompt} />
+        </div>
+      </Field>
+
+      <Field label="Namunalar" right={<RandomIdea onPick={pickExample} />} hint="Bosing — prompt, uslub va format tayyor bo'ladi. Xohlasangiz matnni o'zgartiring.">
+        <ExampleStrip onPick={pickExample} active={picked} />
       </Field>
 
       <Field label="Uslub">
@@ -281,21 +294,15 @@ export function ImageStudio({
               <p className="text-[13px] text-white/60">Rasm yaratilmoqda…</p>
             </div>
           ) : (
-            <div className="max-w-md w-full">
+            <div className="max-w-2xl w-full">
               <div className="text-center mb-5">
                 <div className="mx-auto mb-3 size-14 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 grid place-items-center shadow-[0_0_50px_-10px_rgba(217,70,239,0.8)]">
                   <Sparkles className="size-6 text-white" />
                 </div>
                 <h2 className="text-[18px] font-bold text-white font-display">Tasavvuringizni rasmga aylantiring</h2>
-                <p className="text-[12.5px] text-white/45 mt-1">Keyin uni kamera harakati bilan videoga aylantirasiz.</p>
+                <p className="text-[12.5px] text-white/45 mt-1">G&apos;oyalardan birini tanlang yoki o&apos;zingiz yozing. Keyin uni videoga aylantirasiz.</p>
               </div>
-              <div className="grid gap-1.5">
-                {EXAMPLES.map((e) => (
-                  <button key={e} onClick={() => setPrompt(e)} className="text-left rounded-xl px-3.5 py-2.5 text-[12.5px] text-white/70 bg-white/[0.03] ring-1 ring-white/[0.07] hover:bg-violet-500/10 hover:ring-violet-400/40 hover:text-white transition">
-                    {e}
-                  </button>
-                ))}
-              </div>
+              <ExampleGallery onPick={pickExample} />
             </div>
           )}
         </div>
