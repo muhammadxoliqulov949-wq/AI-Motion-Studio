@@ -9,7 +9,9 @@ import { downloadBlob } from "../export";
 import { type GenCaps, GenError, generateImage, GEN_SIZES, randomSeed } from "../client";
 import type { GalleryItem } from "../useGallery";
 import type { GenItem } from "../store";
+import { type Attachment, describeMaterials } from "../attachments";
 import type { GenExample } from "../examples";
+import { PromptBox } from "./PromptBox";
 import { ExampleGallery, ExampleStrip, PromptBoosters, RandomIdea } from "./Examples";
 import { Chips, Field, Notice, PrimaryButton, GhostButton } from "./kit";
 import { ModeLayout } from "./ModeLayout";
@@ -74,6 +76,11 @@ export function ImageStudio({
   const [session, setSession] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [describing, setDescribing] = useState(false);
+  const attachRef = useRef(attachments);
+  attachRef.current = attachments;
+  useEffect(() => () => attachRef.current.forEach((a) => a.thumb && URL.revokeObjectURL(a.thumb)), []);
   const abort = useRef<AbortController | null>(null);
 
   // Count down after a "free limit" answer so the user knows when to retry.
@@ -93,8 +100,35 @@ export function ImageStudio({
   const results = session.map((id) => items.find((i) => i.id === id)).filter((i): i is GalleryItem => !!i);
   const current = results.find((i) => i.id === selected) ?? results[0] ?? null;
 
+  /** AI reads the attached materials (and the user's words) and writes the prompt. */
+  const describe = async () => {
+    if (!attachments.length || describing) return null;
+    setDescribing(true);
+    setError(null);
+    try {
+      const written = await describeMaterials(prompt.trim(), attachments, hasKey);
+      setPrompt(written);
+      setPicked(null);
+      return written;
+    } catch (err) {
+      const e = err as GenError;
+      setError(e.message || "Materiallarni o'qib bo'lmadi");
+      if (e.code === "free_limit" && e.retryAfter) setWait(e.retryAfter);
+      return null;
+    } finally {
+      setDescribing(false);
+    }
+  };
+
+  /** Attached picture or video frame → Video tab as the source. */
+  const useAsVideo = (a: Attachment) => {
+    if (!a.blob || !a.thumb) return;
+    onToVideo({ id: `att-${a.id}`, kind: "image", createdAt: Date.now(), prompt: a.name, model: "material", aspect: "", blob: a.blob, url: a.thumb });
+  };
+
   const run = async () => {
-    const text = prompt.trim();
+    // Only materials, no words: let AI write the prompt first.
+    const text = prompt.trim().length >= 3 ? prompt.trim() : attachments.length ? ((await describe()) ?? "") : "";
     if (text.length < 3 || busy) return;
     setError(null);
     abort.current = new AbortController();
@@ -141,7 +175,7 @@ export function ImageStudio({
     setError(null);
   };
 
-  const canGenerate = prompt.trim().length >= 3 && !busy && wait <= 0;
+  const canGenerate = (prompt.trim().length >= 3 || attachments.length > 0) && !busy && !describing && wait <= 0;
 
   const controls = (
     <>
@@ -150,17 +184,19 @@ export function ImageStudio({
           <b>Sinov rejimi:</b> server kalitsiz ishlayapti — barcha foydalanuvchilar uchun 45 soniyada 1 ta rasm va burchagida kichik «pollinations.ai» belgisi. Cheklovsiz va belgisiz ishlashi uchun serverga bepul <span className="font-mono">POLLINATIONS_API_KEY</span> qo&apos;shing (enter.pollinations.ai).
         </Notice>
       )}
-      <Field label="Nimani yaratamiz?" hint="Inglizcha yozsangiz natija ancha yaxshi chiqadi. Uslub tanlansa, tegishli so'zlar avtomatik qo'shiladi.">
-        <textarea
+      <Field label="Nimani yaratamiz?" hint="«+» orqali rasm, video yoki hujjat (PDF, Word, TXT) qo'shing — AI ularni o'qib prompt yozadi. O'zingiz yozsangiz, inglizcha yaxshiroq chiqadi.">
+        <PromptBox
           value={prompt}
-          onChange={(e) => {
-            setPrompt(e.target.value);
+          onChange={(v) => {
+            setPrompt(v);
             setPicked(null);
           }}
-          rows={4}
-          maxLength={700}
-          placeholder="Masalan: a red fox walking through a snowy forest at dawn"
-          className="w-full rounded-2xl bg-white/[0.04] ring-1 ring-white/10 focus:ring-violet-400/70 outline-none p-3.5 text-[14px] text-white placeholder:text-white/30 resize-none"
+          placeholder="Masalan: a red fox walking through a snowy forest at dawn — yoki «+» bilan rasm, video, hujjat qo'shing"
+          attachments={attachments}
+          onAttachments={setAttachments}
+          onDescribe={() => void describe()}
+          describing={describing}
+          onUseAsVideo={useAsVideo}
         />
         <div className="mt-2.5">
           <PromptBoosters prompt={prompt} onChange={setPrompt} />
